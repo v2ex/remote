@@ -1,0 +1,50 @@
+repos:
+  - repo: meta
+    hooks:
+      - id: check-hooks-apply
+      - id: check-useless-excludes
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.0.1
+    hooks:
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        exclude: .md$
+      - id: file-contents-sorter
+        files: |
+          (?x)(
+              requirements.txt
+          )
+
+  - repo: https://github.com/timothycrosley/isort
+    rev: 5.9.3
+    hooks:
+      - id: isort
+
+  - repo: https://github.com/psf/black
+    rev: 21.9b0
+    hooks:
+      - id: black
+
+  - repo: https://gitlab.com/pycqa/flake8
+    rev: 3.9.2
+    hooks:
+      - id: flake8
+        additional_dependencies:
+          - flake8-blind-except
+          - flake8-bugbear
+          - flake8-comprehensions
+          - flake8-debugger
+          - flake8-docstrings
+          - flake8-logging-format
+          - flake8-print
+          - flake8-pytest-style
+          - flake8-tidy-imports
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.0
+    hooks:
+      - id: bandit
+        args: ["-l", "-v", "-c", ".bandit.yaml"]

@@ -1,0 +1,6 @@
+[flake8]
+max-line-length = 88
+# Enable flake8-logging-format
+enable-extensions = G
+ignore = D10
+ban-relative-import = true

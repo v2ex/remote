@@ -1,0 +1,9 @@
+dnspython
+flask
+gunicorn
+pylibmc
+python-magic
+redis
+requests
+rq
+wand

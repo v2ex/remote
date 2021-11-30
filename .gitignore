@@ -1,0 +1,7 @@
+*.pyc
+*.pyo
+.vscode
+.vagrant-*
+.python-version
+config.py
+Vagrantfile
