@@ -8,13 +8,12 @@ import os
 import subprocess
 import tempfile
 import time
-from PIL import Image
-import PIL
 
 import dns.resolver
 import magic
 import pylibmc
 from flask import Flask, Response, request
+from PIL import Image
 from redis import StrictRedis
 from rq import Queue
 
@@ -203,24 +202,24 @@ def fit(box: int):
                     new_size = (int(box * im_size[0] / im_size[1]), box)
                 resized = im.resize(new_size, Image.BICUBIC)
                 output = io.BytesIO()
-                if im.format == 'JPEG':
+                if im.format == "JPEG":
                     resized.save(output, format=im.format, quality=93)
                 else:
                     resized.save(output, format=im.format)
                 b = output.getvalue()
-                if 'simple' in request.args:
+                if "simple" in request.args:
                     return Response(b, mimetype="image/" + im.format)
                 o["output"] = str(base64.b64encode(b))
                 o["status"] = "ok"
                 end = time.time()
-                o['start'] = start
-                o['end'] = end
+                o["start"] = start
+                o["end"] = end
                 elapsed = end - start
-                o["cost"] = int(elapsed * 1000)    
+                o["cost"] = int(elapsed * 1000)
             except IOError as e:
-                o['output'] = None
-                o['status'] = "error"
-                o['message'] = "Unable to fit the image: " + str(e)
+                o["output"] = None
+                o["status"] = "error"
+                o["message"] = "Unable to fit the image: " + str(e)
     return Response(json.dumps(o), mimetype="application/json;charset=utf-8")
 
 
@@ -231,7 +230,7 @@ def resize_avatar():
         o["status"] = "ok"
         o[
             "usage"
-        ] = "Upload an image file in PNG/JPG/GIF format, and get them resized for website avatars in three sizes: 24x24 / 48x48 / 73x73"
+        ] = "Upload an image file in PNG/JPG/GIF format, and resize for website avatars in three sizes: 24x24 / 48x48 / 73x73"  # noqa
     if request.method == "POST":
         o = {}
         if "file" in request.files:
