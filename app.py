@@ -231,13 +231,7 @@ def resize_avatar():
         o["status"] = "ok"
         o[
             "usage"
-        ] = u"""Upload an image file in PNG/JPG/GIF format,
-and get them resized for website avatars
-in three sizes:
-- 24x24
-- 48x48
-- 73x73
-"""
+        ] = "Upload an image file in PNG/JPG/GIF format, and get them resized for website avatars in three sizes: 24x24 / 48x48 / 73x73"
     if request.method == "POST":
         o = {}
         if "file" in request.files:
