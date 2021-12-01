@@ -2,12 +2,14 @@
 # coding=utf-8
 
 import base64
+import io
 import json
 import os
 import subprocess
 import tempfile
 import time
-import timeit
+from PIL import Image
+import PIL
 
 import dns.resolver
 import magic
@@ -169,6 +171,59 @@ have its GPS info stripped, and auto rotated
     return Response(json.dumps(o), mimetype="application/json;charset=utf-8")
 
 
+@app.route("/images/fit/<int:box>", methods=["GET", "POST"])
+def fit(box: int):
+    start = time.time()
+    o = {}
+    if request.method == "GET":
+        o["status"] = "ok"
+        o[
+            "usage"
+        ] = u"Upload an image file in JPEG format and fit it into a box of the specified size"  # noqa
+    if request.method == "POST":
+        o["uploaded"] = {}
+        image = request.files["file"].read()
+        o["uploaded"]["size"] = len(image)
+        mime = magic.from_buffer(image, mime=True)
+        o["uploaded"]["mime"] = mime
+        if mime not in ["image/jpeg", "image/png", "image/gif"]:
+            o["status"] = "error"
+            o["message"] = "The uploaded file is not in a supported format"
+        else:
+            """
+            Now we have a valid image.
+            Fit it into a box of the specified size.
+            """
+            try:
+                im = Image.open(io.BytesIO(image))
+                im_size = im.size
+                if im_size[0] > im_size[1]:
+                    new_size = (box, int(box * im_size[1] / im_size[0]))
+                else:
+                    new_size = (int(box * im_size[0] / im_size[1]), box)
+                resized = im.resize(new_size, Image.BICUBIC)
+                output = io.BytesIO()
+                if im.format == 'JPEG':
+                    resized.save(output, format=im.format, quality=93)
+                else:
+                    resized.save(output, format=im.format)
+                b = output.getvalue()
+                if 'simple' in request.args:
+                    return Response(b, mimetype="image/" + im.format)
+                o["output"] = str(base64.b64encode(b))
+                o["status"] = "ok"
+                end = time.time()
+                o['start'] = start
+                o['end'] = end
+                elapsed = end - start
+                o["cost"] = int(elapsed * 1000)    
+            except IOError as e:
+                o['output'] = None
+                o['status'] = "error"
+                o['message'] = "Unable to fit the image: " + str(e)
+    return Response(json.dumps(o), mimetype="application/json;charset=utf-8")
+
+
 @app.route("/images/resize_avatar", methods=["GET", "POST"])
 def resize_avatar():
     o = {}
@@ -205,7 +260,7 @@ in three sizes:
                 - 32x32
                 """
                 try:
-                    start = timeit.timeit()
+                    start = time.time()
                     avatar73 = _rescale_avatar(image, 73, 73)
                     avatar48 = _rescale_avatar(image, 48, 48)
                     avatar24 = _rescale_avatar(image, 24, 24)
@@ -218,8 +273,8 @@ in three sizes:
                     o["avatar24"] = {}
                     o["avatar24"]["size"] = len(avatar24)
                     o["avatar24"]["body"] = base64.b64encode(avatar24)
-                    end = timeit.timeit()
-                    elapsed = start - end
+                    end = time.time()
+                    elapsed = end - start
                     o["cost"] = int(elapsed * 1000)
                     o["status"] = "ok"
                 except:  # noqa

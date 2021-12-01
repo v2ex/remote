@@ -7,3 +7,4 @@ redis
 requests
 rq
 wand
+pillow-simd
