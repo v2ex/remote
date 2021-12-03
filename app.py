@@ -223,6 +223,7 @@ def fit(box: int):
                 elapsed = end - start
                 o["cost"] = int(elapsed * 1000)
             except IOError as e:
+                capture_exception(e)
                 o["output"] = None
                 o["status"] = "error"
                 o["message"] = "Unable to fit the image: " + str(e)
@@ -241,40 +242,86 @@ def resize_avatar():
         o = {}
         if "file" in request.files:
             o["uploaded"] = {}
-            input = request.files["file"]
-            image = input.read()
-            o["uploaded"]["size"] = len(image)
-            mime = magic.from_buffer(image, mime=True)
-            o["uploaded"]["mime"] = mime
-            if not mime.startswith("image"):
+            uploaded = request.files["file"].read()
+            o["uploaded"]["size"] = len(uploaded)
+            try:
+                mime = magic.from_buffer(uploaded, mime=True)
+                o["uploaded"]["mime"] = mime
+            except:  # noqa
                 o["status"] = "error"
-                o["message"] = "The uploaded file is not an image"
+                o["message"] = "Unable to determine the file type"
+                return Response(
+                    json.dumps(o), status=400, mimetype="application/json;charset=utf-8"
+                )
+            try:
+                im = Image.open(io.BytesIO(uploaded))
+                im_size = im.size
+            except:  # noqa
+                o["status"] = "error"
+                o["message"] = "Unable to determine the size of the image"
+                return Response(
+                    json.dumps(o), status=400, mimetype="application/json;charset=utf-8"
+                )
+            if mime not in ["image/jpeg", "image/png", "image/gif"]:
+                o["status"] = "error"
+                o["message"] = "The uploaded file is not in a supported format"
                 return Response(
                     json.dumps(o), status=400, mimetype="application/json;charset=utf-8"
                 )
             else:
                 """
-                Now we have a valid image.
-                Resize it to 3 different sizes:
+                Now we have a valid image and we know its size and type.
+                Resize it to 6 different sizes:
 
-                - 73x73
-                - 48x48
-                - 32x32
+                - 24x24 (mini)
+                - 48x48 (normal)
+                - 73x73 (large)
+                - 128x128 (xl)
+                - 256x256 (xxl)
+                - 512x512 (xxxl)
                 """
                 try:
                     start = time.time()
-                    avatar73 = _rescale_avatar(image, 73)
-                    avatar48 = _rescale_avatar(image, 48)
-                    avatar24 = _rescale_avatar(image, 24)
-                    o["avatar73"] = {}
-                    o["avatar73"]["size"] = len(avatar73)
-                    o["avatar73"]["body"] = base64.b64encode(avatar73).decode("utf-8")
-                    o["avatar48"] = {}
-                    o["avatar48"]["size"] = len(avatar48)
-                    o["avatar48"]["body"] = base64.b64encode(avatar48).decode("utf-8")
+
+                    avatar24 = _rescale_avatar(uploaded, 24)
                     o["avatar24"] = {}
                     o["avatar24"]["size"] = len(avatar24)
                     o["avatar24"]["body"] = base64.b64encode(avatar24).decode("utf-8")
+
+                    avatar48 = _rescale_avatar(uploaded, 48)
+                    o["avatar48"] = {}
+                    o["avatar48"]["size"] = len(avatar48)
+                    o["avatar48"]["body"] = base64.b64encode(avatar48).decode("utf-8")
+
+                    avatar73 = _rescale_avatar(uploaded, 73)
+                    o["avatar73"] = {}
+                    o["avatar73"]["size"] = len(avatar73)
+                    o["avatar73"]["body"] = base64.b64encode(avatar73).decode("utf-8")
+
+                    if im_size[0] >= 128 and im_size[1] >= 128:
+                        avatar128 = _rescale_avatar(uploaded, 128)
+                        o["avatar128"] = {}
+                        o["avatar128"]["size"] = len(avatar128)
+                        o["avatar128"]["body"] = base64.b64encode(avatar128).decode(
+                            "utf-8"
+                        )
+
+                    if im_size[0] >= 256 and im_size[1] >= 256:
+                        avatar256 = _rescale_avatar(uploaded, 256)
+                        o["avatar256"] = {}
+                        o["avatar256"]["size"] = len(avatar256)
+                        o["avatar256"]["body"] = base64.b64encode(avatar256).decode(
+                            "utf-8"
+                        )
+
+                    if im_size[0] >= 512 and im_size[1] >= 512:
+                        avatar512 = _rescale_avatar(uploaded, 512)
+                        o["avatar512"] = {}
+                        o["avatar512"]["size"] = len(avatar512)
+                        o["avatar512"]["body"] = base64.b64encode(avatar512).decode(
+                            "utf-8"
+                        )
+
                     end = time.time()
                     elapsed = end - start
                     o["cost"] = int(elapsed * 1000)
