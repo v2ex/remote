@@ -5,6 +5,7 @@ import base64
 import io
 import json
 import os
+import socket
 import subprocess
 import tempfile
 import time
@@ -12,6 +13,7 @@ from typing import Tuple
 
 import dns.resolver
 import magic
+import pyipip
 import sentry_sdk
 from flask import Flask, Response, request
 from PIL import Image
@@ -39,6 +41,8 @@ app = Flask(__name__)
 
 started = time.time()
 
+ipdb = pyipip.IPIPDatabase(config.ipip_db_path)
+
 
 @app.route("/")
 def home():
@@ -64,6 +68,53 @@ def hello():
     o["region"] = config.region
     o["country"] = config.country
     return Response(json.dumps(o), mimetype="application/json;charset=utf-8")
+
+
+@app.route("/ipip/<ip>")
+def ipip(ip):
+    if ":" in ip:
+        return Response(
+            json.dumps({"status": "error", "message": "IPv6 is not supported"}),
+            status=400,
+            mimetype="application/json;charset=utf-8",
+        )
+    try:
+        socket.inet_aton(ip)
+    except socket.error:
+        return Response(
+            json.dumps({"status": "error", "message": "Invalid IPv4 address provided"}),
+            status=400,
+            mimetype="application/json;charset=utf-8",
+        )
+    record = ipdb.lookup(ip)
+    if record is not None:
+        data_list = record.split("\t")
+    result = {}
+    try:
+        result["status"] = "ok"
+        result["country"] = data_list[0]
+        result["province"] = data_list[1]
+        result["city"] = data_list[2]
+        result["org"] = data_list[3]
+        result["isp"] = data_list[4]
+        result["latitude"] = data_list[5]
+        result["longitude"] = data_list[6]
+        result["timezone"] = data_list[7]
+        result["tz_diff"] = data_list[8]
+        result["cn_division_code"] = data_list[9]
+        result["calling_code"] = data_list[10]
+        result["country_code"] = data_list[11]
+        result["continent_code"] = data_list[12]
+        return Response(
+            json.dumps(result), status=200, mimetype="application/json;charset=utf-8"
+        )
+    except Exception as e:  # noqa
+        capture_exception(e)
+        return Response(
+            json.dumps({"status": "error", "message": "IP info not found"}),
+            status=404,
+            mimetype="application/json;charset=utf-8",
+        )
 
 
 @app.route("/ip")
@@ -363,7 +414,7 @@ def resize_avatar():
             )
 
 
-def _rescale_avatar(data, box):
+def _rescale_avatar(data: bytes, box: int) -> bytes | None:
     try:
         f = io.BytesIO(data)
         with Image.open(f) as image:
@@ -395,14 +446,14 @@ def _rescale_aspect_ratio(data: bytes, box: int) -> Tuple[bytes | None, str | No
         return None, None
 
 
-def _get_exiftool_path():
+def _get_exiftool_path() -> str:
     locations = ["/usr/bin/exiftool", "/opt/homebrew/bin/exiftool"]
     for location in locations:
         if os.path.exists(location):
             return location
 
 
-def _get_jhead_path():
+def _get_jhead_path() -> str:
     locations = ["/usr/bin/jhead", "/opt/homebrew/bin/jhead"]
     for location in locations:
         if os.path.exists(location):

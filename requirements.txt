@@ -2,6 +2,7 @@ dnspython
 flask
 gunicorn
 pillow
+pyipip
 python-magic
 python-resize-image
 requests
