@@ -1,8 +1,12 @@
-# Various Micro Services
+# Remote Worker
 
 ## Separation of Responsibilities
 
-You may want to move some processing out of the main monolith code base for security or performance reasons, like network test or image processing, since they do not depend on the main codebase.
+There are several reasons to move some processing out of the main code base for security or performance:
+
+- If there is a security exploit in the image processing library, it will only impact this remote worker
+- If you need to send some network requests (e.g., link previewing) to a third party, running those tasks on separate servers to prevent leaking the IP addresses of the main web instances
+- If some processing does not rely on the other part of the main code base, then you can move them into the remote worker for better performance
 
 ## Python Version
 
