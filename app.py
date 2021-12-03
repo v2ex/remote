@@ -138,10 +138,7 @@ def prepare_jpeg():
         o["status"] = "ok"
         o[
             "usage"
-        ] = u"""
-Upload an image file in JPEG format and
-have its GPS info stripped, and auto rotated
-"""
+        ] = "Upload an image file in JPEG format and have its GPS info stripped, and auto rotated"  # noqa
     if request.method == "POST":
         o["uploaded"] = {}
         image = request.files["file"].read()
