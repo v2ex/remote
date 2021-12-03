@@ -1,10 +1,11 @@
 dnspython
 flask
 gunicorn
+pillow
 pylibmc
 python-magic
+python-resize-image
 redis
 requests
 rq
 wand
-pillow-simd

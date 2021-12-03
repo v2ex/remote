@@ -12,12 +12,30 @@ import time
 import dns.resolver
 import magic
 import pylibmc
+import sentry_sdk
 from flask import Flask, Response, request
 from PIL import Image
 from redis import StrictRedis
+from resizeimage import resizeimage
 from rq import Queue
+from sentry_sdk import capture_exception
+from sentry_sdk.integrations.flask import FlaskIntegration
 
 import config
+
+sentry_sdk.init(
+    dsn=config.sentry_dsn,
+    integrations=[FlaskIntegration()],
+    # Set traces_sample_rate to 1.0 to capture 100%
+    # of transactions for performance monitoring.
+    # We recommend adjusting this value in production.
+    traces_sample_rate=1.0,
+    # By default the SDK will try to use the SENTRY_RELEASE
+    # environment variable, or infer a git commit
+    # SHA as release, however you may want to set
+    # something more human-readable.
+    # release="myapp@1.0.0",
+)
 
 app = Flask(__name__)
 
@@ -163,7 +181,7 @@ have its GPS info stripped, and auto rotated
                 )
                 with open(path, "rb") as tmp:
                     _o = tmp.read()
-                    o["output"] = str(base64.b64encode(_o))
+                    o["output"] = base64.b64encode(_o).decode("utf-8")
                     o["status"] = "ok"
             finally:
                 os.remove(path)
@@ -254,48 +272,45 @@ def resize_avatar():
                 """
                 try:
                     start = time.time()
-                    avatar73 = _rescale_avatar(image, 73, 73)
-                    avatar48 = _rescale_avatar(image, 48, 48)
-                    avatar24 = _rescale_avatar(image, 24, 24)
+                    avatar73 = _rescale_avatar(image, 73)
+                    avatar48 = _rescale_avatar(image, 48)
+                    avatar24 = _rescale_avatar(image, 24)
                     o["avatar73"] = {}
                     o["avatar73"]["size"] = len(avatar73)
-                    o["avatar73"]["body"] = base64.b64encode(avatar73)
+                    o["avatar73"]["body"] = base64.b64encode(avatar73).decode("utf-8")
                     o["avatar48"] = {}
                     o["avatar48"]["size"] = len(avatar48)
-                    o["avatar48"]["body"] = base64.b64encode(avatar48)
+                    o["avatar48"]["body"] = base64.b64encode(avatar48).decode("utf-8")
                     o["avatar24"] = {}
                     o["avatar24"]["size"] = len(avatar24)
-                    o["avatar24"]["body"] = base64.b64encode(avatar24)
+                    o["avatar24"]["body"] = base64.b64encode(avatar24).decode("utf-8")
                     end = time.time()
                     elapsed = end - start
                     o["cost"] = int(elapsed * 1000)
                     o["status"] = "ok"
-                except:  # noqa
+                except Exception as e:  # noqa
+                    capture_exception(e)
                     o["status"] = "error"
-                    o["message"] = "Failed to resize the uploaded image file."
+                    o["message"] = "Failed to resize the uploaded image file: " + str(e)
         else:
             o["status"] = "error"
     return Response(json.dumps(o), mimetype="application/json;charset=utf-8")
 
 
-def _rescale_avatar(data, width, height):
-    from wand.image import Image
-
-    with Image(blob=data) as r:
-        w = r.width
-        h = r.height
-        if w > h:
-            nh = height
-            nw = int(w * (float(nh) / float(h)))
-        else:
-            nw = width
-            nh = int(h * (float(nw) / float(w)))
-        r.transform(resize=str(nw) + "x" + str(nh))
-        if w > h:
-            r.crop(width=width, height=height, left=((nw - width) / 2))
-        else:
-            r.crop(width=width, height=height, top=((nh - height) / 2))
-        return r.make_blob(format="png")
+def _rescale_avatar(data, box):
+    try:
+        f = io.BytesIO(data)
+        with Image.open(f) as image:
+            thumbnail = resizeimage.resize_thumbnail(image, [box, box])
+            o = io.BytesIO()
+            thumbnail.save(o, format="PNG")
+            v = o.getvalue()
+            o.close()
+            f.close()
+            return v
+    except Exception as e:  # noqa
+        capture_exception(e)
+        return None
 
 
 def _get_exiftool_path():
