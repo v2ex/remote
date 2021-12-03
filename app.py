@@ -11,13 +11,10 @@ import time
 
 import dns.resolver
 import magic
-import pylibmc
 import sentry_sdk
 from flask import Flask, Response, request
 from PIL import Image
-from redis import StrictRedis
 from resizeimage import resizeimage
-from rq import Queue
 from sentry_sdk import capture_exception
 from sentry_sdk.integrations.flask import FlaskIntegration
 
@@ -39,12 +36,6 @@ sentry_sdk.init(
 
 app = Flask(__name__)
 
-q = Queue(name="remote", connection=StrictRedis())
-mc = pylibmc.Client(
-    [config.memcached_host],
-    binary=True,
-    behaviors={"tcp_nodelay": True, "ketama": True},
-)
 started = time.time()
 
 
