@@ -8,3 +8,4 @@ python-resize-image
 redis
 requests
 rq
+sentry-sdk[flask]
