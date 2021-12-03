@@ -249,6 +249,9 @@ def resize_avatar():
             if not mime.startswith("image"):
                 o["status"] = "error"
                 o["message"] = "The uploaded file is not an image"
+                return Response(
+                    json.dumps(o), status=400, mimetype="application/json;charset=utf-8"
+                )
             else:
                 """
                 Now we have a valid image.
@@ -276,20 +279,33 @@ def resize_avatar():
                     elapsed = end - start
                     o["cost"] = int(elapsed * 1000)
                     o["status"] = "ok"
+                    return Response(
+                        json.dumps(o),
+                        status=200,
+                        mimetype="application/json;charset=utf-8",
+                    )
                 except Exception as e:  # noqa
                     capture_exception(e)
                     o["status"] = "error"
                     o["message"] = "Failed to resize the uploaded image file: " + str(e)
+                    return Response(
+                        json.dumps(o),
+                        status=400,
+                        mimetype="application/json;charset=utf-8",
+                    )
         else:
             o["status"] = "error"
-    return Response(json.dumps(o), mimetype="application/json;charset=utf-8")
+            o["message"] = "No file was uploaded"
+            return Response(
+                json.dumps(o), status=400, mimetype="application/json;charset=utf-8"
+            )
 
 
 def _rescale_avatar(data, box):
     try:
         f = io.BytesIO(data)
         with Image.open(f) as image:
-            thumbnail = resizeimage.resize_thumbnail(image, [box, box])
+            thumbnail = resizeimage.resize_cover(image, [box, box], validate=False)
             o = io.BytesIO()
             thumbnail.save(o, format="PNG")
             v = o.getvalue()
