@@ -12,6 +12,8 @@ There are several reasons to move some processing out of the main code base for 
 
 This project should always be using the latest version of Python. At the time of this writing, it is 3.10.0. You can install it via [pyenv](https://github.com/pyenv/pyenv).
 
+We included a [pre-commit](https://pre-commit.com/) [config](./pre-commit-config.yaml) to ensure code quality and consistency.
+
 ## Ubuntu Packages
 
 These packages need required for manipulating images:
