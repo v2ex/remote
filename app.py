@@ -262,7 +262,14 @@ def resize_avatar():
                 return Response(
                     json.dumps(o), status=400, mimetype="application/json;charset=utf-8"
                 )
-            if mime not in ["image/jpeg", "image/png", "image/gif"]:
+            if mime not in [
+                "image/jpeg",
+                "image/png",
+                "image/gif",
+                "image/webp",
+                "image/bmp",
+                "image/tiff",
+            ]:
                 o["status"] = "error"
                 o["message"] = "The uploaded file is not in a supported format"
                 return Response(

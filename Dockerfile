@@ -3,7 +3,7 @@ FROM ubuntu:20.04
 LABEL org.opencontainers.image.authors="livid@v2ex.com"
 
 RUN apt-get update -y && \
-    apt-get install -y python3-pip python3-dev libimage-exiftool-perl jhead libmagic-dev libmemcached-dev
+    apt-get install -y python3-pip python3-dev libimage-exiftool-perl jhead libmagic-dev libpng-dev libjpeg-dev libwebp-dev libtiff-dev zlib1g-dev libfreetype-dev
 
 COPY ./requirements.txt /app/requirements.txt
 
