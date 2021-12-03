@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM python:3.10
 
 LABEL org.opencontainers.image.authors="livid@v2ex.com"
 
