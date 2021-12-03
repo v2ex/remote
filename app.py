@@ -8,6 +8,7 @@ import os
 import subprocess
 import tempfile
 import time
+from typing import Tuple
 
 import dns.resolver
 import magic
@@ -184,50 +185,57 @@ def fit(box: int):
         o["status"] = "ok"
         o[
             "usage"
-        ] = u"Upload an image file in JPEG format and fit it into a box of the specified size"  # noqa
+        ] = u"Upload an image file and fit it into a box of the specified size"  # noqa
+        return Response(
+            json.dumps(o), status=200, mimetype="application/json;charset=utf-8"
+        )
     if request.method == "POST":
         o["uploaded"] = {}
-        image = request.files["file"].read()
-        o["uploaded"]["size"] = len(image)
-        mime = magic.from_buffer(image, mime=True)
+        uploaded = request.files["file"].read()
+        o["uploaded"]["size"] = len(uploaded)
+        mime = magic.from_buffer(uploaded, mime=True)
         o["uploaded"]["mime"] = mime
         if mime not in ["image/jpeg", "image/png", "image/gif"]:
             o["status"] = "error"
             o["message"] = "The uploaded file is not in a supported format"
+            return Response(
+                json.dumps(o), status=200, mimetype="application/json;charset=utf-8"
+            )
         else:
             """
             Now we have a valid image.
             Fit it into a box of the specified size.
             """
             try:
-                im = Image.open(io.BytesIO(image))
-                im_size = im.size
-                if im_size[0] > im_size[1]:
-                    new_size = (box, int(box * im_size[1] / im_size[0]))
-                else:
-                    new_size = (int(box * im_size[0] / im_size[1]), box)
-                resized = im.resize(new_size, Image.BICUBIC)
-                output = io.BytesIO()
-                if im.format == "JPEG":
-                    resized.save(output, format=im.format, quality=93)
-                else:
-                    resized.save(output, format=im.format)
-                b = output.getvalue()
+                b, f = _rescale_aspect_ratio(uploaded, box)
+                if b is None:
+                    o["status"] = "error"
+                    o["message"] = "Error occurred during rescaling"
+                    return Response(
+                        json.dumps(o),
+                        status=500,
+                        mimetype="application/json;charset=utf-8",
+                    )
                 if "simple" in request.args:
-                    return Response(b, mimetype="image/" + im.format)
-                o["output"] = str(base64.b64encode(b))
+                    return Response(b, status=200, mimetype="image/" + f.lower())
+                o["output"] = base64.b64encode(b).decode("utf-8")
                 o["status"] = "ok"
                 end = time.time()
                 o["start"] = start
                 o["end"] = end
                 elapsed = end - start
                 o["cost"] = int(elapsed * 1000)
+                return Response(
+                    json.dumps(o), status=200, mimetype="application/json;charset=utf-8"
+                )
             except IOError as e:
                 capture_exception(e)
                 o["output"] = None
                 o["status"] = "error"
                 o["message"] = "Unable to fit the image: " + str(e)
-    return Response(json.dumps(o), mimetype="application/json;charset=utf-8")
+                return Response(
+                    json.dumps(o), status=400, mimetype="application/json;charset=utf-8"
+                )
 
 
 @app.route("/images/resize_avatar", methods=["GET", "POST"])
@@ -369,6 +377,22 @@ def _rescale_avatar(data, box):
     except Exception as e:  # noqa
         capture_exception(e)
         return None
+
+
+def _rescale_aspect_ratio(data: bytes, box: int) -> Tuple[bytes | None, str | None]:
+    try:
+        f = io.BytesIO(data)
+        with Image.open(f) as image:
+            thumbnail = resizeimage.resize_thumbnail(image, [box, box])
+            o = io.BytesIO()
+            thumbnail.save(o, format=image.format)
+            v = o.getvalue()
+            o.close()
+            f.close()
+            return v, image.format
+    except Exception as e:  # noqa
+        capture_exception(e)
+        return None, None
 
 
 def _get_exiftool_path():
