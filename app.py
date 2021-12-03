@@ -68,7 +68,7 @@ def hello():
 
 @app.route("/ip")
 def ip():
-    def extract_ip4(ip):
+    def extract_ip4(ip: str) -> str:
         return ip.replace("::ffff:", "")
 
     o = {}
