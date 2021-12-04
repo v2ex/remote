@@ -22,6 +22,7 @@ from sentry_sdk import capture_exception
 from sentry_sdk.integrations.flask import FlaskIntegration
 
 import config
+from constants import JSON_MIME_TYPE
 
 sentry_sdk.init(
     dsn=config.sentry_dsn,
@@ -47,7 +48,7 @@ ipdb = pyipip.IPIPDatabase(config.ipip_db_path)
 @app.route("/")
 def home():
     o = {}
-    return Response(json.dumps(o), mimetype="application/json;charset=utf-8")
+    return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
 
 
 @app.route("/ping")
@@ -56,7 +57,7 @@ def ping():
     o["status"] = "ok"
     o["message"] = "pong"
     o["uptime"] = time.time() - started
-    return Response(json.dumps(o), mimetype="application/json;charset=utf-8")
+    return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
 
 
 @app.route("/hello")
@@ -67,7 +68,7 @@ def hello():
     o["uptime"] = time.time() - started
     o["region"] = config.region
     o["country"] = config.country
-    return Response(json.dumps(o), mimetype="application/json;charset=utf-8")
+    return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
 
 
 @app.route("/ipip/<ip>")
@@ -76,7 +77,7 @@ def ipip(ip):
         return Response(
             json.dumps({"status": "error", "message": "IPv6 is not supported"}),
             status=400,
-            mimetype="application/json;charset=utf-8",
+            mimetype=JSON_MIME_TYPE,
         )
     try:
         socket.inet_aton(ip)
@@ -84,7 +85,7 @@ def ipip(ip):
         return Response(
             json.dumps({"status": "error", "message": "Invalid IPv4 address provided"}),
             status=400,
-            mimetype="application/json;charset=utf-8",
+            mimetype=JSON_MIME_TYPE,
         )
     record = ipdb.lookup(ip)
     if record is not None:
@@ -105,15 +106,13 @@ def ipip(ip):
         result["calling_code"] = data_list[10]
         result["country_code"] = data_list[11]
         result["continent_code"] = data_list[12]
-        return Response(
-            json.dumps(result), status=200, mimetype="application/json;charset=utf-8"
-        )
+        return Response(json.dumps(result), status=200, mimetype=JSON_MIME_TYPE)
     except Exception as e:  # noqa
         capture_exception(e)
         return Response(
             json.dumps({"status": "error", "message": "IP info not found"}),
             status=404,
-            mimetype="application/json;charset=utf-8",
+            mimetype=JSON_MIME_TYPE,
         )
 
 
@@ -141,7 +140,7 @@ def ip():
         o["ipv6"] = o["ip"]
         o["ipv4_available"] = False
         o["ipv6_available"] = True
-    return Response(json.dumps(o), mimetype="application/json;charset=utf-8")
+    return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
 
 
 @app.route("/dns/resolve")
@@ -171,7 +170,7 @@ def resolve():
         except Exception as e:  # noqa
             o["status"] = "error"
             o["message"] = "Unable to resolve the specified domain: " + str(e)
-    return Response(json.dumps(o), mimetype="application/json;charset=utf-8")
+    return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
 
 
 @app.route("/images/prepare_jpeg", methods=["GET", "POST"])
@@ -186,11 +185,18 @@ def prepare_jpeg():
         o["uploaded"] = {}
         image = request.files["file"].read()
         o["uploaded"]["size"] = len(image)
-        mime = magic.from_buffer(image, mime=True)
-        o["uploaded"]["mime"] = mime
+        try:
+            mime = magic.from_buffer(image, mime=True)
+            o["uploaded"]["mime"] = mime
+        except:  # noqa
+            o["status"] = "error"
+            o["message"] = "Unable to determine the MIME type of the uploaded file"
+            return Response(
+                json.dumps(o), status=400, mimetype="application/json;charset=utf-8"
+            )
         if not mime.startswith("image/jpeg"):
             o["status"] = "error"
-            o["message"] = "The uploaded file is not in a supported format"
+            o["message"] = "This endpoint is only for processing JPEG images"
         else:
             """
             Now we have a valid JPEG.
@@ -204,6 +210,10 @@ def prepare_jpeg():
                 with os.fdopen(fd, "wb") as tmp:
                     tmp.write(image)
                 exiftool_path = _get_exiftool_path()
+                if exiftool_path is None:
+                    o["status"] = "error"
+                    o["message"] = "exiftool not installed"
+                    return Response(json.dumps(o), status=500, mimetype=JSON_MIME_TYPE)
                 subprocess.call(
                     [
                         exiftool_path,
@@ -216,6 +226,10 @@ def prepare_jpeg():
                     shell=False,
                 )
                 jhead_path = _get_jhead_path()
+                if jhead_path is None:
+                    o["status"] = "error"
+                    o["message"] = "jhead not installed"
+                    return Response(json.dumps(o), status=500, mimetype=JSON_MIME_TYPE)
                 subprocess.call(
                     [jhead_path, "-v", "-exonly", "-autorot", path], shell=False
                 )
@@ -225,7 +239,7 @@ def prepare_jpeg():
                     o["status"] = "ok"
             finally:
                 os.remove(path)
-    return Response(json.dumps(o), mimetype="application/json;charset=utf-8")
+    return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
 
 
 @app.route("/images/fit/<int:box>", methods=["GET", "POST"])
@@ -249,9 +263,7 @@ def fit(box: int):
         if mime not in ["image/jpeg", "image/png", "image/gif"]:
             o["status"] = "error"
             o["message"] = "The uploaded file is not in a supported format"
-            return Response(
-                json.dumps(o), status=200, mimetype="application/json;charset=utf-8"
-            )
+            return Response(json.dumps(o), status=200, mimetype=JSON_MIME_TYPE)
         else:
             """
             Now we have a valid image.
@@ -265,7 +277,7 @@ def fit(box: int):
                     return Response(
                         json.dumps(o),
                         status=500,
-                        mimetype="application/json;charset=utf-8",
+                        mimetype=JSON_MIME_TYPE,
                     )
                 if "simple" in request.args:
                     return Response(b, status=200, mimetype="image/" + f.lower())
@@ -276,17 +288,13 @@ def fit(box: int):
                 o["end"] = end
                 elapsed = end - start
                 o["cost"] = int(elapsed * 1000)
-                return Response(
-                    json.dumps(o), status=200, mimetype="application/json;charset=utf-8"
-                )
+                return Response(json.dumps(o), status=200, mimetype=JSON_MIME_TYPE)
             except IOError as e:
                 capture_exception(e)
                 o["output"] = None
                 o["status"] = "error"
                 o["message"] = "Unable to fit the image: " + str(e)
-                return Response(
-                    json.dumps(o), status=400, mimetype="application/json;charset=utf-8"
-                )
+                return Response(json.dumps(o), status=400, mimetype=JSON_MIME_TYPE)
 
 
 @app.route("/images/resize_avatar", methods=["GET", "POST"])
@@ -309,18 +317,14 @@ def resize_avatar():
             except:  # noqa
                 o["status"] = "error"
                 o["message"] = "Unable to determine the file type"
-                return Response(
-                    json.dumps(o), status=400, mimetype="application/json;charset=utf-8"
-                )
+                return Response(json.dumps(o), status=400, mimetype=JSON_MIME_TYPE)
             try:
                 im = Image.open(io.BytesIO(uploaded))
                 im_size = im.size
             except:  # noqa
                 o["status"] = "error"
                 o["message"] = "Unable to determine the size of the image"
-                return Response(
-                    json.dumps(o), status=400, mimetype="application/json;charset=utf-8"
-                )
+                return Response(json.dumps(o), status=400, mimetype=JSON_MIME_TYPE)
             if mime not in [
                 "image/jpeg",
                 "image/png",
@@ -331,9 +335,7 @@ def resize_avatar():
             ]:
                 o["status"] = "error"
                 o["message"] = "The uploaded file is not in a supported format"
-                return Response(
-                    json.dumps(o), status=400, mimetype="application/json;charset=utf-8"
-                )
+                return Response(json.dumps(o), status=400, mimetype=JSON_MIME_TYPE)
             else:
                 """
                 Now we have a valid image and we know its size and type.
@@ -395,7 +397,7 @@ def resize_avatar():
                     return Response(
                         json.dumps(o),
                         status=200,
-                        mimetype="application/json;charset=utf-8",
+                        mimetype=JSON_MIME_TYPE,
                     )
                 except Exception as e:  # noqa
                     capture_exception(e)
@@ -404,14 +406,12 @@ def resize_avatar():
                     return Response(
                         json.dumps(o),
                         status=400,
-                        mimetype="application/json;charset=utf-8",
+                        mimetype=JSON_MIME_TYPE,
                     )
         else:
             o["status"] = "error"
             o["message"] = "No file was uploaded"
-            return Response(
-                json.dumps(o), status=400, mimetype="application/json;charset=utf-8"
-            )
+            return Response(json.dumps(o), status=400, mimetype=JSON_MIME_TYPE)
 
 
 def _rescale_avatar(data: bytes, box: int) -> bytes | None:
@@ -446,15 +446,17 @@ def _rescale_aspect_ratio(data: bytes, box: int) -> Tuple[bytes | None, str | No
         return None, None
 
 
-def _get_exiftool_path() -> str:
+def _get_exiftool_path() -> str | None:
     locations = ["/usr/bin/exiftool", "/opt/homebrew/bin/exiftool"]
     for location in locations:
         if os.path.exists(location):
             return location
+    return None
 
 
-def _get_jhead_path() -> str:
+def _get_jhead_path() -> str | None:
     locations = ["/usr/bin/jhead", "/opt/homebrew/bin/jhead"]
     for location in locations:
         if os.path.exists(location):
             return location
+    return None
