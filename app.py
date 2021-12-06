@@ -340,6 +340,7 @@ def resize_avatar():
                 "image/heic",
                 "image/jp2",
                 "image/vnd.adobe.photoshop",
+                "image/x-icns",
             ]:
                 if mime.startswith("image/"):
                     capture_message("Unsupported image type received: " + mime)
