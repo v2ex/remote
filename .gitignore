@@ -7,3 +7,4 @@ config.py
 Vagrantfile
 .DS_Store
 dev
+.idea
