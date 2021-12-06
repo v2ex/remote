@@ -265,7 +265,7 @@ class SupportedImageTypes(Enum):
 @app.route("/images/prepare_jpeg", methods=["GET", "POST"])
 def prepare_jpeg():
     # check uploaded file is valid or not
-    if _uploaded := request.files.get("file"):
+    if not (_uploaded := request.files.get("file")):
         return error(APIError(message="No file was uploaded"))
     uploaded = _uploaded.read()
     if not (mime := _get_mime(uploaded)):
@@ -332,7 +332,7 @@ def prepare_jpeg():
 @app.route("/images/fit/<int:box>", methods=["GET", "POST"])
 def fit(box: int):
     # check uploaded file is valid or not
-    if _uploaded := request.files.get("file"):
+    if not (_uploaded := request.files.get("file")):
         return error(APIError(message="No file was uploaded"))
     uploaded = _uploaded.read()
     if not (mime := _get_mime(uploaded)):
@@ -393,7 +393,7 @@ class AvatarSize(IntEnum):
 @app.route("/images/resize_avatar", methods=["GET", "POST"])
 def resize_avatar():
     # check uploaded file is valid or not
-    if _uploaded := request.files.get("file"):
+    if not (_uploaded := request.files.get("file")):
         return error(APIError(message="No file was uploaded"))
     uploaded = _uploaded.read()
     if not (mime := _get_mime(uploaded)):
