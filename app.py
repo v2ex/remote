@@ -15,6 +15,7 @@ from enum import Enum, IntEnum, unique
 from functools import partial, wraps
 from typing import Any, List, Tuple
 
+import config
 import dns.resolver
 import magic
 import pillow_avif  # noqa
@@ -28,7 +29,6 @@ from resizeimage import resizeimage
 from sentry_sdk import capture_exception, capture_message
 from sentry_sdk.integrations.flask import FlaskIntegration
 
-import config
 from constants import JSON_MIME_TYPE
 
 register_heif_opener()
