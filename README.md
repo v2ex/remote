@@ -75,6 +75,8 @@ These original image formats are supported:
 - WEBP
 - HEIF
 - AVIF
+- PSD
+- ICNS
 
 The output format is always in PNG.
 
