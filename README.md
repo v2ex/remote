@@ -72,6 +72,8 @@ These original image formats are supported:
 - BMP
 - TIFF
 - WEBP
+- HEIF
+- AVIF
 
 The output format is always in PNG.
 
