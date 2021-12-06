@@ -57,12 +57,14 @@ ipdb = pyipip.IPIPDatabase(config.ipip_db_path)
 class APIDoc:
     usage: str
     status: str = "ok"
+    success: bool = True
 
 
 @dataclass
 class APIError:
     message: str
     status: str = "error"
+    success: bool = False
 
 
 @app.route("/")
@@ -75,6 +77,7 @@ class Pong:
     status: str = "ok"
     message: str = "pong"
     uptime: float = time.time() - started
+    success: bool = True
 
 
 @app.route("/ping")
@@ -90,6 +93,7 @@ class AccessMeta:
     uptime: float = time.time() - started
     country: str = config.country
     region: str = config.region
+    success: bool = True
 
 
 @app.route("/hello")
@@ -102,6 +106,7 @@ IPRecord = namedtuple(
     "IPRecord",
     [
         "status",
+        "success",
         "country",
         "province",
         "city",
@@ -140,7 +145,7 @@ def ipip(ip):
         data_list = [] if record is None else record.split("\t")
         # remove a `status` field that we assigned.
         except_ip_meta_length = len(IPRecord._fields) - 1
-        ip_record = IPRecord("ok", *data_list[:except_ip_meta_length])
+        ip_record = IPRecord("ok", True, *data_list[:except_ip_meta_length])
     except Exception as e:  # noqa
         capture_exception(e)
         api_error = APIError(message="IP info not found")
@@ -158,6 +163,7 @@ class UserIP:
     ipv6: str = None
     ipv4_available: bool = None
     ipv6_available: bool = None
+    success: bool = True
 
     def __post_init__(self):
         self.ipv4 = self.extract_ip4(self.ip) if self.is_ipv4 else None
@@ -189,6 +195,7 @@ class ResolveResp:
     answers: List
     nameservers: List[str]
     status: str = None  # TODO should be bool?
+    success: bool = True
 
     def __post_init__(self):
         self.status = "ok" if len(self.answers) > 0 else "error"
@@ -312,6 +319,7 @@ def prepare_jpeg():
                     _o = tmp.read()
                     o["output"] = base64.b64encode(_o).decode("utf-8")
                     o["status"] = "ok"
+                    o["success"] = True
             finally:
                 os.remove(path)
     return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
@@ -358,6 +366,7 @@ def fit(box: int):
                     return Response(b, mimetype="image/" + f.lower())
                 o["output"] = base64.b64encode(b).decode("utf-8")
                 o["status"] = "ok"
+                o["success"] = True
                 end = time.time()
                 o["start"] = start
                 o["end"] = end
@@ -376,10 +385,12 @@ def fit(box: int):
 def resize_avatar():
     if request.method == "GET":
         api_doc = APIDoc(
-            usage="Upload an image file in PNG/JPG/GIF format, "
-            "and resize for website avatars in three sizes: 24x24 / 48x48 / 73x73"
+            usage="Upload an image file in supported format, "
+            "and resize for website avatars in the following sizes: "
+            "24x24 / 48x48 / 73x73 / 128x128 / 256x256 / 512x512. "
+            "Supported formats are: " + ", ".join(SupportedImageTypes.all())
         )
-        return Response(json.dumps(api_doc), mimetype=JSON_MIME_TYPE)
+        return Response(json.dumps(asdict(api_doc)), mimetype=JSON_MIME_TYPE)
     if request.method == "POST":
         o = {}
         if "file" in request.files:
@@ -479,6 +490,7 @@ def resize_avatar():
                     elapsed = end - start
                     o["cost"] = int(elapsed * 1000)
                     o["status"] = "ok"
+                    o["success"] = True
                     return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
                 except Exception as e:  # noqa
                     capture_exception(e)
