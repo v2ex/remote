@@ -228,6 +228,7 @@ class SupportImgMIME(Enum):
     IMAGE_HEIC = 'image/heic'
     IMAGE_JP2 = 'image/jp2'
     IMAGE_VND_ADOBE_PHOTOSHOP = 'image/vnd.adobe.photoshop'
+    IMAGE_X_ICNS = "image/x-icns"
 
     @classmethod
     def all(cls):
