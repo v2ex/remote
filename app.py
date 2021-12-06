@@ -111,11 +111,11 @@ class Pong:
 
 @app.route("/ping")
 def ping():
-    return success(Pong())
+    return success(Pong(uptime=time.time() - started))
 
 
 @dataclass
-class AccessMeta:
+class WorkerInfo:
     status: str = "ok"
     uid: str = config.uid
     uptime: float = time.time() - started
@@ -126,7 +126,7 @@ class AccessMeta:
 
 @app.route("/hello")
 def hello():
-    return success(AccessMeta())
+    return success(WorkerInfo(uptime=time.time() - started))
 
 
 IPRecord = namedtuple(
