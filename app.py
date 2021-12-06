@@ -232,7 +232,7 @@ def resolve():
     resolve_resp = ResolveResp(
         nameservers=config.nameservers,
         ttl=dns_answer.expiration - time.time(),
-        answers=[rrset.to_next() for rrset in dns_answer],
+        answers=[rrset.to_text() for rrset in dns_answer],
     )
     return success(resolve_resp)
 
