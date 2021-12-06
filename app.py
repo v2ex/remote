@@ -338,8 +338,10 @@ def resize_avatar():
                 "image/tiff",
                 "image/heif",
                 "image/heic",
+                "image/jp2",
             ]:
-                capture_message("Unsupported image type: " + mime)
+                if mime.starts_with("image/"):
+                    capture_message("Unsupported image type received: " + mime)
                 o["status"] = "error"
                 o["message"] = "The uploaded file is not in a supported format"
                 return Response(json.dumps(o), status=400, mimetype=JSON_MIME_TYPE)

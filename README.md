@@ -67,6 +67,7 @@ Return a JSON object with the processed versions of the image:
 These original image formats are supported:
 
 - JPEG
+- JPEG 2000 (JP2)
 - PNG
 - GIF
 - BMP
