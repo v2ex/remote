@@ -9,12 +9,16 @@ import socket
 import subprocess
 import tempfile
 import time
-from typing import Tuple
+from collections import namedtuple
+from dataclasses import asdict, dataclass
+from enum import Enum, unique
+from typing import List, Tuple
 
 import dns.resolver
 import magic
 import pyipip
 import sentry_sdk
+from dns.exception import DNSException
 from flask import Flask, Response, request
 from PIL import Image
 from resizeimage import resizeimage
@@ -45,142 +49,201 @@ started = time.time()
 ipdb = pyipip.IPIPDatabase(config.ipip_db_path)
 
 
+@dataclass
+class APIDoc:
+    usage: str
+    status: str = "ok"
+
+
+@dataclass
+class APIError:
+    message: str
+    status: str = "error"
+
+
 @app.route("/")
 def home():
-    o = {}
-    return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
+    return Response(json.dumps({}), mimetype=JSON_MIME_TYPE)
+
+
+@dataclass
+class Pong:
+    status: str = "ok"
+    message: str = "pong"
+    uptime: float = time.time() - started
 
 
 @app.route("/ping")
 def ping():
-    o = {}
-    o["status"] = "ok"
-    o["message"] = "pong"
-    o["uptime"] = time.time() - started
-    return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
+    pong = asdict(Pong())
+    return Response(json.dumps(pong), mimetype=JSON_MIME_TYPE)
+
+
+@dataclass
+class AccessMeta:
+    status: str = "ok"
+    uid: str = config.uid
+    uptime: float = time.time() - started
+    country: str = config.country
+    region: str = config.region
 
 
 @app.route("/hello")
 def hello():
-    o = {}
-    o["status"] = "ok"
-    o["uid"] = config.uid
-    o["uptime"] = time.time() - started
-    o["region"] = config.region
-    o["country"] = config.country
-    return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
+    access_meta = asdict(AccessMeta())
+    return Response(json.dumps(access_meta), mimetype=JSON_MIME_TYPE)
+
+
+IPRecord = namedtuple(
+    "IPRecord",
+    [
+        "status",
+        "country",
+        "province",
+        "city",
+        "org",
+        "isp",
+        "latitude",
+        "longitude",
+        "timezone",
+        "tz_diff",
+        "cn_division_code",
+        "calling_code",
+        "country_code",
+        "continent_code",
+    ],
+)
 
 
 @app.route("/ipip/<ip>")
 def ipip(ip):
     if ":" in ip:
+        api_error = APIError(message="IPv6 is not supported")
         return Response(
-            json.dumps({"status": "error", "message": "IPv6 is not supported"}),
-            status=400,
-            mimetype=JSON_MIME_TYPE,
+            json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
         )
+
     try:
         socket.inet_aton(ip)
     except socket.error:
+        api_error = APIError(message="Invalid IPv4 address provided")
         return Response(
-            json.dumps({"status": "error", "message": "Invalid IPv4 address provided"}),
-            status=400,
-            mimetype=JSON_MIME_TYPE,
+            json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
         )
-    record = ipdb.lookup(ip)
-    if record is not None:
-        data_list = record.split("\t")
-    result = {}
+
     try:
-        result["status"] = "ok"
-        result["country"] = data_list[0]
-        result["province"] = data_list[1]
-        result["city"] = data_list[2]
-        result["org"] = data_list[3]
-        result["isp"] = data_list[4]
-        result["latitude"] = data_list[5]
-        result["longitude"] = data_list[6]
-        result["timezone"] = data_list[7]
-        result["tz_diff"] = data_list[8]
-        result["cn_division_code"] = data_list[9]
-        result["calling_code"] = data_list[10]
-        result["country_code"] = data_list[11]
-        result["continent_code"] = data_list[12]
-        return Response(json.dumps(result), status=200, mimetype=JSON_MIME_TYPE)
+        record = ipdb.lookup(ip)
+        data_list = [] if record is None else record.split()
+        # remove a `status` field that we assigned.
+        except_ip_meta_length = len(IPRecord._fields) - 1
+        ip_record = IPRecord("ok", *data_list[:except_ip_meta_length])
     except Exception as e:  # noqa
         capture_exception(e)
+        api_error = APIError(message="IP info not found")
         return Response(
-            json.dumps({"status": "error", "message": "IP info not found"}),
-            status=404,
-            mimetype=JSON_MIME_TYPE,
+            json.dumps(asdict(api_error)), status=404, mimetype=JSON_MIME_TYPE
         )
+
+    return Response(json.dumps(ip_record._asdict()), mimetype=JSON_MIME_TYPE)
+
+
+@dataclass
+class UserIP:
+    ip: str
+    ipv4: str = None
+    ipv6: str = None
+    ipv4_available: bool = None
+    ipv6_available: bool = None
+
+    def __post_init__(self):
+        self.ipv4 = self.extract_ip4(self.ip) if self.is_ipv4 else None
+        self.ipv6 = None if self.is_ipv4 else self.ip
+        self.ipv4_available = self.is_ipv4
+        self.ipv6_available = not self.is_ipv4
+
+    @property
+    def is_ipv4(self) -> bool:
+        return "." in self.ip
+
+    @staticmethod
+    def extract_ip4(raw_ip: str) -> str:
+        return raw_ip.replace("::ffff:", "")  # noqa
 
 
 @app.route("/ip")
 def ip():
-    def extract_ip4(ip: str) -> str:
-        return ip.replace("::ffff:", "")
-
-    o = {}
+    _ip = request.remote_addr
     if "X-Forwarded-For" in request.headers:
-        ip = request.headers["X-Forwarded-For"]
-    else:
-        ip = request.remote_addr
-    o["ip"] = ip
-    if "." in o["ip"]:
-        # IPv4 address detected
-        o["ip"] = extract_ip4(o["ip"])
-        o["ipv4"] = o["ip"]
-        o["ipv6"] = None
-        o["ipv4_available"] = True
-        o["ipv6_available"] = False
-    else:
-        # IPv6 address detected
-        o["ipv4"] = None
-        o["ipv6"] = o["ip"]
-        o["ipv4_available"] = False
-        o["ipv6_available"] = True
-    return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
+        _ip = request.headers["X-Forwarded-For"]
+    user_ip = UserIP(ip=_ip)
+    return Response(json.dumps(asdict(user_ip)), mimetype=JSON_MIME_TYPE)
+
+
+@dataclass
+class ResolveResp:
+    ttl: float
+    answers: List
+    nameservers: List[str]
+    status: str = None  # TODO should be bool?
+
+    def __post_init__(self):
+        self.status = "ok" if len(self.answers) > 0 else "error"
 
 
 @app.route("/dns/resolve")
 def resolve():
-    o = {}
-    d = request.args.get("domain")
-    if d is None:
-        o["status"] = "error"
-        o["message"] = 'Required parameter "domain" is missing'
-    else:
-        try:
-            local_resolver = dns.resolver.Resolver()
-            local_resolver.nameservers = config.nameservers
-            rrsets = local_resolver.query(d)
-            o["nameservers"] = config.nameservers
-            now = time.time()
-            ttl = rrsets.expiration - now
-            o["ttl"] = ttl
-            answers = []
-            for rrset in rrsets:
-                answers.append(rrset.to_text())
-            if len(answers) > 0:
-                o["status"] = "ok"
-            else:
-                o["status"] = "error"
-            o["answers"] = answers
-        except Exception as e:  # noqa
-            o["status"] = "error"
-            o["message"] = "Unable to resolve the specified domain: " + str(e)
-    return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
+    if not (domain := request.args.get("domain")):
+        resp = APIError(message='Required parameter "domain" is missing or empty')
+        return Response(json.dumps(resp), status=400, mimetype=JSON_MIME_TYPE)
+
+    local_resolver = dns.resolver.Resolver()
+    local_resolver.nameservers = config.nameservers
+    try:
+        dns_answer = local_resolver.resolve(domain)
+    except DNSException as e:
+        resp = APIError(message=f"Unable to resolve the specified domain: {e}")
+        return Response(json.dumps(resp), status=400, mimetype=JSON_MIME_TYPE)
+
+    resolve_resp = ResolveResp(
+        nameservers=config.nameservers,
+        ttl=dns_answer.expiration - time.time(),
+        answers=[rrset.to_text() for rrset in dns_answer],
+    )
+    return Response(json.dumps(asdict(resolve_resp)), mimetype=JSON_MIME_TYPE)
+
+
+@unique
+class SupportImgMIME(Enum):
+    IMAGE_JPEG = "image/jpeg"
+    IMAGE_PNG = "image/png"
+    IMAGE_GIF = "image/gif"
+    IMAGE_WEBP = "image/webp"
+    IMAGE_BMP = "image/bmp"
+    IMAGE_TIFF = "image/tiff"
+
+    @classmethod
+    def all(cls):
+        return [i.value for i in cls]
+
+    @classmethod
+    def processing_support(cls):
+        return [
+            cls.IMAGE_JPEG.value,
+            cls.IMAGE_PNG.value,
+            cls.IMAGE_GIF.value,
+        ]
 
 
 @app.route("/images/prepare_jpeg", methods=["GET", "POST"])
 def prepare_jpeg():
-    o = {}
     if request.method == "GET":
-        o["status"] = "ok"
-        o[
-            "usage"
-        ] = "Upload an image file in JPEG format and have its GPS info stripped, and auto rotated"  # noqa
+        api_doc = APIDoc(
+            usage="Upload an image file in JPEG format "
+            "and have its GPS info stripped, and auto rotated"
+        )
+        return Response(json.dumps(api_doc), mimetype=JSON_MIME_TYPE)
+
+    o = {}
     if request.method == "POST":
         o["uploaded"] = {}
         image = request.files["file"].read()
@@ -189,14 +252,19 @@ def prepare_jpeg():
             mime = magic.from_buffer(image, mime=True)
             o["uploaded"]["mime"] = mime
         except:  # noqa
-            o["status"] = "error"
-            o["message"] = "Unable to determine the MIME type of the uploaded file"
-            return Response(
-                json.dumps(o), status=400, mimetype="application/json;charset=utf-8"
+            api_error = APIError(
+                message="Unable to determine the MIME type of the uploaded file"
             )
-        if not mime.startswith("image/jpeg"):
-            o["status"] = "error"
-            o["message"] = "This endpoint is only for processing JPEG images"
+            return Response(
+                json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
+            )
+        if not mime.startswith(SupportImgMIME.IMAGE_JPEG.value):
+            api_error = APIError(
+                message="This endpoint is only for processing JPEG images"
+            )
+            return Response(
+                json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
+            )
         else:
             """
             Now we have a valid JPEG.
@@ -211,9 +279,12 @@ def prepare_jpeg():
                     tmp.write(image)
                 exiftool_path = _get_exiftool_path()
                 if exiftool_path is None:
-                    o["status"] = "error"
-                    o["message"] = "exiftool not installed"
-                    return Response(json.dumps(o), status=500, mimetype=JSON_MIME_TYPE)
+                    api_error = APIError(message="exiftool not installed")
+                    return Response(
+                        json.dumps(asdict(api_error)),
+                        status=500,
+                        mimetype=JSON_MIME_TYPE,
+                    )
                 subprocess.call(
                     [
                         exiftool_path,
@@ -227,9 +298,12 @@ def prepare_jpeg():
                 )
                 jhead_path = _get_jhead_path()
                 if jhead_path is None:
-                    o["status"] = "error"
-                    o["message"] = "jhead not installed"
-                    return Response(json.dumps(o), status=500, mimetype=JSON_MIME_TYPE)
+                    api_error = APIError(message="jhead not installed")
+                    return Response(
+                        json.dumps(asdict(api_error)),
+                        status=500,
+                        mimetype=JSON_MIME_TYPE,
+                    )
                 subprocess.call(
                     [jhead_path, "-v", "-exonly", "-autorot", path], shell=False
                 )
@@ -244,26 +318,27 @@ def prepare_jpeg():
 
 @app.route("/images/fit/<int:box>", methods=["GET", "POST"])
 def fit(box: int):
+    if request.method == "GET":
+        api_doc = APIDoc(
+            usage="Upload an image file and fit it into a box of the specified size"
+        )
+        return Response(json.dumps(asdict(api_doc)), mimetype=JSON_MIME_TYPE)
+
     start = time.time()
     o = {}
-    if request.method == "GET":
-        o["status"] = "ok"
-        o[
-            "usage"
-        ] = u"Upload an image file and fit it into a box of the specified size"  # noqa
-        return Response(
-            json.dumps(o), status=200, mimetype="application/json;charset=utf-8"
-        )
     if request.method == "POST":
         o["uploaded"] = {}
         uploaded = request.files["file"].read()
         o["uploaded"]["size"] = len(uploaded)
         mime = magic.from_buffer(uploaded, mime=True)
         o["uploaded"]["mime"] = mime
-        if mime not in ["image/jpeg", "image/png", "image/gif"]:
-            o["status"] = "error"
-            o["message"] = "The uploaded file is not in a supported format"
-            return Response(json.dumps(o), status=200, mimetype=JSON_MIME_TYPE)
+        if mime not in SupportImgMIME.processing_support():
+            api_error = APIError(
+                message="The uploaded file is not in a supported format"
+            )
+            return Response(
+                json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
+            )
         else:
             """
             Now we have a valid image.
@@ -272,15 +347,14 @@ def fit(box: int):
             try:
                 b, f = _rescale_aspect_ratio(uploaded, box)
                 if b is None:
-                    o["status"] = "error"
-                    o["message"] = "Error occurred during rescaling"
+                    api_error = APIError(message="Error occurred during rescaling")
                     return Response(
-                        json.dumps(o),
+                        json.dumps(asdict(api_error)),
                         status=500,
                         mimetype=JSON_MIME_TYPE,
                     )
                 if "simple" in request.args:
-                    return Response(b, status=200, mimetype="image/" + f.lower())
+                    return Response(b, mimetype="image/" + f.lower())
                 o["output"] = base64.b64encode(b).decode("utf-8")
                 o["status"] = "ok"
                 end = time.time()
@@ -288,7 +362,7 @@ def fit(box: int):
                 o["end"] = end
                 elapsed = end - start
                 o["cost"] = int(elapsed * 1000)
-                return Response(json.dumps(o), status=200, mimetype=JSON_MIME_TYPE)
+                return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
             except IOError as e:
                 capture_exception(e)
                 o["output"] = None
@@ -299,12 +373,12 @@ def fit(box: int):
 
 @app.route("/images/resize_avatar", methods=["GET", "POST"])
 def resize_avatar():
-    o = {}
     if request.method == "GET":
-        o["status"] = "ok"
-        o[
-            "usage"
-        ] = "Upload an image file in PNG/JPG/GIF format, and resize for website avatars in three sizes: 24x24 / 48x48 / 73x73"  # noqa
+        api_doc = APIDoc(
+            usage="Upload an image file in PNG/JPG/GIF format, "
+            "and resize for website avatars in three sizes: 24x24 / 48x48 / 73x73"
+        )
+        return Response(json.dumps(api_doc), mimetype=JSON_MIME_TYPE)
     if request.method == "POST":
         o = {}
         if "file" in request.files:
@@ -315,27 +389,27 @@ def resize_avatar():
                 mime = magic.from_buffer(uploaded, mime=True)
                 o["uploaded"]["mime"] = mime
             except:  # noqa
-                o["status"] = "error"
-                o["message"] = "Unable to determine the file type"
-                return Response(json.dumps(o), status=400, mimetype=JSON_MIME_TYPE)
+                api_error = APIError(message="Unable to determine the file type")
+                return Response(
+                    json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
+                )
             try:
                 im = Image.open(io.BytesIO(uploaded))
                 im_size = im.size
             except:  # noqa
-                o["status"] = "error"
-                o["message"] = "Unable to determine the size of the image"
-                return Response(json.dumps(o), status=400, mimetype=JSON_MIME_TYPE)
-            if mime not in [
-                "image/jpeg",
-                "image/png",
-                "image/gif",
-                "image/webp",
-                "image/bmp",
-                "image/tiff",
-            ]:
-                o["status"] = "error"
-                o["message"] = "The uploaded file is not in a supported format"
-                return Response(json.dumps(o), status=400, mimetype=JSON_MIME_TYPE)
+                api_error = APIError(
+                    message="Unable to determine the size of the image"
+                )
+                return Response(
+                    json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
+                )
+            if mime not in SupportImgMIME.all():
+                api_error = APIError(
+                    message="The uploaded file is not in a supported format"
+                )
+                return Response(
+                    json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
+                )
             else:
                 """
                 Now we have a valid image and we know its size and type.
@@ -394,24 +468,22 @@ def resize_avatar():
                     elapsed = end - start
                     o["cost"] = int(elapsed * 1000)
                     o["status"] = "ok"
-                    return Response(
-                        json.dumps(o),
-                        status=200,
-                        mimetype=JSON_MIME_TYPE,
-                    )
+                    return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
                 except Exception as e:  # noqa
                     capture_exception(e)
-                    o["status"] = "error"
-                    o["message"] = "Failed to resize the uploaded image file: " + str(e)
+                    api_error = APIError(
+                        message=f"Failed to resize the uploaded image file: {e}"
+                    )
                     return Response(
-                        json.dumps(o),
+                        json.dumps(asdict(api_error)),
                         status=400,
                         mimetype=JSON_MIME_TYPE,
                     )
         else:
-            o["status"] = "error"
-            o["message"] = "No file was uploaded"
-            return Response(json.dumps(o), status=400, mimetype=JSON_MIME_TYPE)
+            api_error = APIError(message="No file was uploaded")
+            return Response(
+                json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
+            )
 
 
 def _rescale_avatar(data: bytes, box: int) -> bytes | None:
@@ -448,15 +520,9 @@ def _rescale_aspect_ratio(data: bytes, box: int) -> Tuple[bytes | None, str | No
 
 def _get_exiftool_path() -> str | None:
     locations = ["/usr/bin/exiftool", "/opt/homebrew/bin/exiftool"]
-    for location in locations:
-        if os.path.exists(location):
-            return location
-    return None
+    return next((location for location in locations if os.path.exists(location)), None)
 
 
 def _get_jhead_path() -> str | None:
     locations = ["/usr/bin/jhead", "/opt/homebrew/bin/jhead"]
-    for location in locations:
-        if os.path.exists(location):
-            return location
-    return None
+    return next((location for location in locations if os.path.exists(location)), None)
