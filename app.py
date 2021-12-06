@@ -14,7 +14,6 @@ from dataclasses import asdict, dataclass
 from enum import Enum, unique
 from typing import List, Tuple
 
-import config
 import dns.resolver
 import magic
 import pillow_avif  # noqa
@@ -28,6 +27,7 @@ from resizeimage import resizeimage
 from sentry_sdk import capture_exception, capture_message
 from sentry_sdk.integrations.flask import FlaskIntegration
 
+import config
 from constants import JSON_MIME_TYPE
 
 register_heif_opener()
@@ -217,7 +217,7 @@ def resolve():
 
 
 @unique
-class SupportImgMIME(Enum):
+class SupportedImageTypes(Enum):
     IMAGE_JPEG = "image/jpeg"
     IMAGE_PNG = "image/png"
     IMAGE_GIF = "image/gif"
@@ -233,14 +233,6 @@ class SupportImgMIME(Enum):
     @classmethod
     def all(cls):
         return [i.value for i in cls]
-
-    @classmethod
-    def processing_support(cls):
-        return [
-            cls.IMAGE_JPEG.value,
-            cls.IMAGE_PNG.value,
-            cls.IMAGE_GIF.value,
-        ]
 
 
 @app.route("/images/prepare_jpeg", methods=["GET", "POST"])
@@ -267,7 +259,7 @@ def prepare_jpeg():
             return Response(
                 json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
             )
-        if not mime.startswith(SupportImgMIME.IMAGE_JPEG.value):
+        if not mime.startswith(SupportedImageTypes.IMAGE_JPEG.value):
             api_error = APIError(
                 message="This endpoint is only for processing JPEG images"
             )
@@ -341,7 +333,7 @@ def fit(box: int):
         o["uploaded"]["size"] = len(uploaded)
         mime = magic.from_buffer(uploaded, mime=True)
         o["uploaded"]["mime"] = mime
-        if mime not in SupportImgMIME.processing_support():
+        if mime not in SupportedImageTypes.all():
             api_error = APIError(
                 message="The uploaded file is not in a supported format"
             )
@@ -412,7 +404,7 @@ def resize_avatar():
                 return Response(
                     json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
                 )
-            if mime not in SupportImgMIME.all():
+            if mime not in SupportedImageTypes.all():
                 if mime.startswith("image/"):
                     capture_message("Unsupported image type received: " + mime)
                 api_error = APIError(
@@ -425,7 +417,7 @@ def resize_avatar():
                 """
                 We need to rotate the JPEG image if it has Orientation tag.
                 """
-                if mime == SupportImgMIME.IMAGE_JPEG.value:
+                if mime == SupportedImageTypes.IMAGE_JPEG.value:
                     for orientation in ExifTags.TAGS.keys():
                         if ExifTags.TAGS[orientation] == "Orientation":
                             break
