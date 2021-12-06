@@ -13,16 +13,20 @@ from typing import Tuple
 
 import dns.resolver
 import magic
+import pillow_avif  # noqa
 import pyipip
 import sentry_sdk
 from flask import Flask, Response, request
-from PIL import Image
+from PIL import ExifTags, Image
+from pillow_heif import register_heif_opener
 from resizeimage import resizeimage
-from sentry_sdk import capture_exception
+from sentry_sdk import capture_exception, capture_message
 from sentry_sdk.integrations.flask import FlaskIntegration
 
 import config
 from constants import JSON_MIME_TYPE
+
+register_heif_opener()
 
 sentry_sdk.init(
     dsn=config.sentry_dsn,
@@ -332,11 +336,38 @@ def resize_avatar():
                 "image/webp",
                 "image/bmp",
                 "image/tiff",
+                "image/heif",
+                "image/heic",
             ]:
+                capture_message("Unsupported image type: " + mime)
                 o["status"] = "error"
                 o["message"] = "The uploaded file is not in a supported format"
                 return Response(json.dumps(o), status=400, mimetype=JSON_MIME_TYPE)
             else:
+                """
+                We need to rotate the JPEG image if it has Orientation tag.
+                """
+                if mime == "image/jpeg":
+                    for orientation in ExifTags.TAGS.keys():
+                        if ExifTags.TAGS[orientation] == "Orientation":
+                            break
+
+                    exif = im._getexif()
+
+                    if exif is not None and orientation in exif:
+                        if exif[orientation] == 3:
+                            im = im.rotate(180, expand=True)
+                        elif exif[orientation] == 6:
+                            im = im.rotate(270, expand=True)
+                        elif exif[orientation] == 8:
+                            im = im.rotate(90, expand=True)
+
+                    im_size = im.size
+
+                    rotated = io.BytesIO()
+                    im.save(rotated, format="JPEG", quality=95)
+                    uploaded = rotated.getvalue()
+
                 """
                 Now we have a valid image and we know its size and type.
                 Resize it to 6 different sizes:
@@ -351,37 +382,7 @@ def resize_avatar():
                 try:
                     start = time.time()
 
-                    avatar24 = _rescale_avatar(uploaded, 24)
-                    o["avatar24"] = {}
-                    o["avatar24"]["size"] = len(avatar24)
-                    o["avatar24"]["body"] = base64.b64encode(avatar24).decode("utf-8")
-
-                    avatar48 = _rescale_avatar(uploaded, 48)
-                    o["avatar48"] = {}
-                    o["avatar48"]["size"] = len(avatar48)
-                    o["avatar48"]["body"] = base64.b64encode(avatar48).decode("utf-8")
-
-                    avatar73 = _rescale_avatar(uploaded, 73)
-                    o["avatar73"] = {}
-                    o["avatar73"]["size"] = len(avatar73)
-                    o["avatar73"]["body"] = base64.b64encode(avatar73).decode("utf-8")
-
-                    if im_size[0] >= 128 and im_size[1] >= 128:
-                        avatar128 = _rescale_avatar(uploaded, 128)
-                        o["avatar128"] = {}
-                        o["avatar128"]["size"] = len(avatar128)
-                        o["avatar128"]["body"] = base64.b64encode(avatar128).decode(
-                            "utf-8"
-                        )
-
-                    if im_size[0] >= 256 and im_size[1] >= 256:
-                        avatar256 = _rescale_avatar(uploaded, 256)
-                        o["avatar256"] = {}
-                        o["avatar256"]["size"] = len(avatar256)
-                        o["avatar256"]["body"] = base64.b64encode(avatar256).decode(
-                            "utf-8"
-                        )
-
+                    avatar512 = None
                     if im_size[0] >= 512 and im_size[1] >= 512:
                         avatar512 = _rescale_avatar(uploaded, 512)
                         o["avatar512"] = {}
@@ -389,6 +390,20 @@ def resize_avatar():
                         o["avatar512"]["body"] = base64.b64encode(avatar512).decode(
                             "utf-8"
                         )
+                    if avatar512 is not None:
+                        upstream = avatar512
+                    else:
+                        upstream = uploaded
+
+                    sizes = [256, 128, 73, 48, 24]
+                    for size in sizes:
+                        if im_size[0] >= size and im_size[1] >= size:
+                            avatar = _rescale_avatar(upstream, size)
+                            o["avatar" + str(size)] = {}
+                            o["avatar" + str(size)]["size"] = len(avatar)
+                            o["avatar" + str(size)]["body"] = base64.b64encode(
+                                avatar
+                            ).decode("utf-8")
 
                     end = time.time()
                     elapsed = end - start

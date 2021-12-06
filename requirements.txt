@@ -2,6 +2,8 @@ dnspython
 flask
 gunicorn
 pillow
+pillow-avif-plugin
+pillow_heif
 pyipip
 python-magic
 python-resize-image
