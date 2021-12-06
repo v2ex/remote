@@ -5,7 +5,7 @@ import json
 import pytest
 from PIL import Image
 
-from app import app
+from app import AvatarSize, app
 
 
 @pytest.fixture()
@@ -46,3 +46,23 @@ def test_images_fit_320(client):
 
         im = Image.open(io.BytesIO(base64.b64decode(o["output"])))
         assert im.size == (320, 320)
+
+
+def test_images_resize_avatar(client):
+    data = {}
+    with open("tests/hello.png", "rb") as image_file:
+        data["file"] = (image_file, "hello.png")
+        response = client.post(
+            "/images/resize_avatar",
+            data=data,
+            follow_redirects=True,
+            content_type="multipart/form-data",
+        )
+        assert response.status_code == 200
+
+        o = json.loads(response.data)
+
+        for size in AvatarSize:
+            assert f"avatar{size}".encode("utf-8") in response.data
+            im = Image.open(io.BytesIO(base64.b64decode(o[f"avatar{size}"]["body"])))
+            assert im.size == (size, size)
