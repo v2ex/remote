@@ -198,7 +198,7 @@ class ResolveResp:
 def resolve():
     if not (domain := request.args.get("domain")):
         resp = APIError(message='Required parameter "domain" is missing or empty')
-        return Response(json.dumps(resp), status=400, mimetype=JSON_MIME_TYPE)
+        return Response(json.dumps(asdict(resp)), status=400, mimetype=JSON_MIME_TYPE)
 
     local_resolver = dns.resolver.Resolver()
     local_resolver.nameservers = config.nameservers
