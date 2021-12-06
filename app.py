@@ -206,7 +206,7 @@ def resolve():
         dns_answer = local_resolver.resolve(domain)
     except DNSException as e:
         resp = APIError(message=f"Unable to resolve the specified domain: {e}")
-        return Response(json.dumps(resp), status=400, mimetype=JSON_MIME_TYPE)
+        return Response(json.dumps(asdict(resp)), status=400, mimetype=JSON_MIME_TYPE)
 
     resolve_resp = ResolveResp(
         nameservers=config.nameservers,
