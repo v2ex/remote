@@ -10,10 +10,12 @@ import subprocess
 import tempfile
 import time
 from collections import namedtuple
-from dataclasses import asdict, dataclass
-from enum import Enum, unique
-from typing import List, Tuple
+from dataclasses import asdict, dataclass, is_dataclass
+from enum import Enum, IntEnum, unique
+from functools import partial, wraps
+from typing import Any, List, Tuple
 
+import config
 import dns.resolver
 import magic
 import pillow_avif  # noqa
@@ -27,7 +29,6 @@ from resizeimage import resizeimage
 from sentry_sdk import capture_exception, capture_message
 from sentry_sdk.integrations.flask import FlaskIntegration
 
-import config
 from constants import JSON_MIME_TYPE
 
 register_heif_opener()
@@ -39,7 +40,7 @@ sentry_sdk.init(
     # of transactions for performance monitoring.
     # We recommend adjusting this value in production.
     traces_sample_rate=1.0,
-    # By default the SDK will try to use the SENTRY_RELEASE
+    # By default, the SDK will try to use the SENTRY_RELEASE
     # environment variable, or infer a git commit
     # SHA as release, however you may want to set
     # something more human-readable.
@@ -60,6 +61,34 @@ class APIDoc:
     success: bool = True
 
 
+def api_doc(doc: APIDoc):
+    """To decorate the `get` method to return the description of the API."""
+
+    def wrapper(func):
+        @wraps(func)
+        def inner(*args, **kwargs):
+            if request.method == "GET":
+                return success(doc)
+
+            return func(*args, **kwargs)
+
+        return inner
+
+    return wrapper
+
+
+def _response(content: Any, status: int, mimetype: str = JSON_MIME_TYPE, **kwargs):
+    if is_dataclass(content):
+        content = json.dumps(asdict(content))
+    elif isinstance(content, dict):
+        content = json.dumps(content)
+    return Response(response=content, status=status, mimetype=mimetype, **kwargs)
+
+
+error = partial(_response, status=400)
+success = partial(_response, status=200)
+
+
 @dataclass
 class APIError:
     message: str
@@ -69,7 +98,7 @@ class APIError:
 
 @app.route("/")
 def home():
-    return Response(json.dumps({}), mimetype=JSON_MIME_TYPE)
+    return success({})
 
 
 @dataclass
@@ -82,8 +111,7 @@ class Pong:
 
 @app.route("/ping")
 def ping():
-    pong = asdict(Pong())
-    return Response(json.dumps(pong), mimetype=JSON_MIME_TYPE)
+    return success(Pong())
 
 
 @dataclass
@@ -98,8 +126,7 @@ class AccessMeta:
 
 @app.route("/hello")
 def hello():
-    access_meta = asdict(AccessMeta())
-    return Response(json.dumps(access_meta), mimetype=JSON_MIME_TYPE)
+    return success(AccessMeta())
 
 
 IPRecord = namedtuple(
@@ -127,33 +154,22 @@ IPRecord = namedtuple(
 @app.route("/ipip/<ip>")
 def ipip(ip):
     if ":" in ip:
-        api_error = APIError(message="IPv6 is not supported")
-        return Response(
-            json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
-        )
+        return error(APIError(message="IPv6 is not supported"))
 
     try:
         socket.inet_aton(ip)
     except socket.error:
-        api_error = APIError(message="Invalid IPv4 address provided")
-        return Response(
-            json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
-        )
+        return error(APIError(message="Invalid IPv4 address provided"))
 
     try:
-        record = ipdb.lookup(ip)
-        data_list = [] if record is None else record.split("\t")
-        # remove a `status` field that we assigned.
+        ip_metes = ipdb.lookup(ip).split()
+        # remove a field(`status`) that we assigned.
         except_ip_meta_length = len(IPRecord._fields) - 1
-        ip_record = IPRecord("ok", True, *data_list[:except_ip_meta_length])
+        ip_record = IPRecord("ok", True, *ip_metes[:except_ip_meta_length])
+        return success(ip_record._asdict())
     except Exception as e:  # noqa
         capture_exception(e)
-        api_error = APIError(message="IP info not found")
-        return Response(
-            json.dumps(asdict(api_error)), status=404, mimetype=JSON_MIME_TYPE
-        )
-
-    return Response(json.dumps(ip_record._asdict()), mimetype=JSON_MIME_TYPE)
+        return error(APIError(message="IP info not found"), status=404)
 
 
 @dataclass
@@ -183,10 +199,9 @@ class UserIP:
 @app.route("/ip")
 def ip():
     _ip = request.remote_addr
-    if "X-Forwarded-For" in request.headers:
-        _ip = request.headers["X-Forwarded-For"]
-    user_ip = UserIP(ip=_ip)
-    return Response(json.dumps(asdict(user_ip)), mimetype=JSON_MIME_TYPE)
+    if forwarded := request.headers.get("X-Forwarded-For"):
+        _ip = forwarded
+    return success(UserIP(ip=_ip))
 
 
 @dataclass
@@ -204,23 +219,22 @@ class ResolveResp:
 @app.route("/dns/resolve")
 def resolve():
     if not (domain := request.args.get("domain")):
-        resp = APIError(message='Required parameter "domain" is missing or empty')
-        return Response(json.dumps(asdict(resp)), status=400, mimetype=JSON_MIME_TYPE)
+        api_error = APIError(message='Required parameter "domain" is missing or empty')
+        return error(api_error)
 
     local_resolver = dns.resolver.Resolver()
     local_resolver.nameservers = config.nameservers
     try:
         dns_answer = local_resolver.resolve(domain)
     except DNSException as e:
-        resp = APIError(message=f"Unable to resolve the specified domain: {e}")
-        return Response(json.dumps(asdict(resp)), status=400, mimetype=JSON_MIME_TYPE)
+        return error(APIError(message=f"Unable to resolve the specified domain: {e}"))
 
     resolve_resp = ResolveResp(
         nameservers=config.nameservers,
         ttl=dns_answer.expiration - time.time(),
-        answers=[rrset.to_text() for rrset in dns_answer],
+        answers=[rrset.to_next() for rrset in dns_answer],
     )
-    return Response(json.dumps(asdict(resolve_resp)), mimetype=JSON_MIME_TYPE)
+    return success(resolve_resp)
 
 
 @unique
@@ -242,284 +256,242 @@ class SupportedImageTypes(Enum):
         return [i.value for i in cls]
 
 
+@api_doc(
+    APIDoc(
+        usage="Upload an image file in JPEG format "
+        "and have its GPS info stripped, and auto rotated"
+    )
+)
 @app.route("/images/prepare_jpeg", methods=["GET", "POST"])
 def prepare_jpeg():
-    if request.method == "GET":
-        api_doc = APIDoc(
-            usage="Upload an image file in JPEG format "
-            "and have its GPS info stripped, and auto rotated"
+    # check uploaded file is valid or not
+    if _uploaded := request.files.get("file"):
+        return error(APIError(message="No file was uploaded"))
+    uploaded = _uploaded.read()
+    if not (mime := _get_mime(uploaded)):
+        return error(APIError(message="Unable to determine the file type"))
+
+    if not mime.startswith(SupportedImageTypes.IMAGE_JPEG.value):
+        err = APIError(message="This endpoint is only for processing JPEG images")
+        return error(err)
+
+    # check extra tools on system
+    # TODO replace extra tools(`exiftool`/`jhead`) with PIL.
+    if not (exiftool_path := _get_exiftool_path()):
+        return error(APIError(message="exiftool not installed"), status=500)
+    if not (jhead_path := _get_jhead_path()):
+        return error(APIError(message="jhead not installed"), status=500)
+
+    # Now we have a valid JPEG.
+    # Two things to do:
+    #
+    # 1. Remove GPS
+    # 2. Auto Rotate
+    fd, path = tempfile.mkstemp()
+    try:
+        # 1. Remove GPS by using `exiftool`.
+        with os.fdopen(fd, "wb") as tmp:
+            tmp.write(uploaded)
+        subprocess.call(
+            [
+                exiftool_path,
+                "-overwrite_original_in_place",
+                "-P",
+                "-gps:all=",
+                "-xmp:geotag=",
+                path,
+            ],
+            shell=False,
         )
-        return Response(json.dumps(api_doc), mimetype=JSON_MIME_TYPE)
+        # 2. Auto rotate by using `jhead`.
+        subprocess.call([jhead_path, "-v", "-exonly", "-autorot", path], shell=False)
+        with open(path, "rb") as tmp:
+            prepared = base64.b64encode(tmp.read()).decode("utf-8")
+    except Exception as e:  # noqa
+        capture_exception(e)
+        return error(APIError(message=f"Failed to prepare image: {e}"), status=500)
+    finally:
+        os.remove(path)
 
-    o = {}
-    if request.method == "POST":
-        o["uploaded"] = {}
-        image = request.files["file"].read()
-        o["uploaded"]["size"] = len(image)
-        try:
-            mime = magic.from_buffer(image, mime=True)
-            o["uploaded"]["mime"] = mime
-        except:  # noqa
-            api_error = APIError(
-                message="Unable to determine the MIME type of the uploaded file"
-            )
-            return Response(
-                json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
-            )
-        if not mime.startswith(SupportedImageTypes.IMAGE_JPEG.value):
-            api_error = APIError(
-                message="This endpoint is only for processing JPEG images"
-            )
-            return Response(
-                json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
-            )
-        else:
-            """
-            Now we have a valid JPEG.
-            Two things to do:
-
-            - Remove GPS
-            - Auto Rotate
-            """
-            fd, path = tempfile.mkstemp()
-            try:
-                with os.fdopen(fd, "wb") as tmp:
-                    tmp.write(image)
-                exiftool_path = _get_exiftool_path()
-                if exiftool_path is None:
-                    api_error = APIError(message="exiftool not installed")
-                    return Response(
-                        json.dumps(asdict(api_error)),
-                        status=500,
-                        mimetype=JSON_MIME_TYPE,
-                    )
-                subprocess.call(
-                    [
-                        exiftool_path,
-                        "-overwrite_original_in_place",
-                        "-P",
-                        "-gps:all=",
-                        "-xmp:geotag=",
-                        path,
-                    ],
-                    shell=False,
-                )
-                jhead_path = _get_jhead_path()
-                if jhead_path is None:
-                    api_error = APIError(message="jhead not installed")
-                    return Response(
-                        json.dumps(asdict(api_error)),
-                        status=500,
-                        mimetype=JSON_MIME_TYPE,
-                    )
-                subprocess.call(
-                    [jhead_path, "-v", "-exonly", "-autorot", path], shell=False
-                )
-                with open(path, "rb") as tmp:
-                    _o = tmp.read()
-                    o["output"] = base64.b64encode(_o).decode("utf-8")
-                    o["status"] = "ok"
-                    o["success"] = True
-            finally:
-                os.remove(path)
-    return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
+    return success(
+        {
+            "uploaded": {
+                "size": len(uploaded),
+                "mime": mime,
+            },
+            "status": "ok",
+            "output": prepared,
+            "success": True,
+        }
+    )
 
 
+@api_doc(
+    APIDoc(usage="Upload an image file and fit it into a box of the specified size")
+)
 @app.route("/images/fit/<int:box>", methods=["GET", "POST"])
 def fit(box: int):
-    if request.method == "GET":
-        api_doc = APIDoc(
-            usage="Upload an image file and fit it into a box of the specified size"
-        )
-        return Response(json.dumps(asdict(api_doc)), mimetype=JSON_MIME_TYPE)
+    # check uploaded file is valid or not
+    if _uploaded := request.files.get("file"):
+        return error(APIError(message="No file was uploaded"))
+    uploaded = _uploaded.read()
+    if not (mime := _get_mime(uploaded)):
+        return error(APIError(message="Unable to determine the file type"))
 
+    if mime not in SupportedImageTypes.all():
+        return error(APIError(message="The uploaded file is not in a supported format"))
+
+    # Now we have a valid image.
+    # Fit it into a box of the specified size.
     start = time.time()
-    o = {}
-    if request.method == "POST":
-        o["uploaded"] = {}
-        uploaded = request.files["file"].read()
-        o["uploaded"]["size"] = len(uploaded)
-        mime = magic.from_buffer(uploaded, mime=True)
-        o["uploaded"]["mime"] = mime
-        if mime not in SupportedImageTypes.all():
-            api_error = APIError(
-                message="The uploaded file is not in a supported format"
-            )
-            return Response(
-                json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
-            )
-        else:
-            """
-            Now we have a valid image.
-            Fit it into a box of the specified size.
-            """
-            try:
-                b, f = _rescale_aspect_ratio(uploaded, box)
-                if b is None:
-                    api_error = APIError(message="Error occurred during rescaling")
-                    return Response(
-                        json.dumps(asdict(api_error)),
-                        status=500,
-                        mimetype=JSON_MIME_TYPE,
-                    )
-                if "simple" in request.args:
-                    return Response(b, mimetype="image/" + f.lower())
-                o["output"] = base64.b64encode(b).decode("utf-8")
-                o["status"] = "ok"
-                o["success"] = True
-                end = time.time()
-                o["start"] = start
-                o["end"] = end
-                elapsed = end - start
-                o["cost"] = int(elapsed * 1000)
-                return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
-            except IOError as e:
-                capture_exception(e)
-                o["output"] = None
-                o["status"] = "error"
-                o["message"] = "Unable to fit the image: " + str(e)
-                return Response(json.dumps(o), status=400, mimetype=JSON_MIME_TYPE)
+    _resized_content, format_name = _rescale_aspect_ratio(uploaded, box)
+    if _resized_content is None:
+        return error(APIError(message="Error occurred during rescaling"), status=500)
+
+    resized_content = base64.b64encode(_resized_content).decode("utf-8")
+    if request.args.get("simple"):
+        return success(resized_content, mimetype=f"image/{format_name.lower()}")
+
+    end = time.time()
+    return success(
+        {
+            "uploaded": {
+                "size": len(uploaded),
+                "mime": mime,
+            },
+            "status": "ok",
+            "success": True,
+            "start": start,
+            "end": end,
+            "cost": int((end - start) * 1000),
+            "output": resized_content,
+        }
+    )
 
 
+@unique
+class AvatarSize(IntEnum):
+    MINI = 24
+    NORMAL = 48
+    LARGE = 73
+    XL = 128
+    XXL = 256
+    XXXL = 512
+
+    @classmethod
+    def supported_desc(cls):
+        return " / ".join(f"{i}x{i}" for i in cls)
+
+
+@api_doc(
+    APIDoc(
+        usage="Upload an image file in supported format, and resize for website "
+        f"avatars in the following sizes: {AvatarSize.supported_desc()}. "
+        f"Supported formats are: {', '.join(SupportedImageTypes.all())}"
+    )
+)
 @app.route("/images/resize_avatar", methods=["GET", "POST"])
 def resize_avatar():
-    if request.method == "GET":
-        api_doc = APIDoc(
-            usage="Upload an image file in supported format, "
-            "and resize for website avatars in the following sizes: "
-            "24x24 / 48x48 / 73x73 / 128x128 / 256x256 / 512x512. "
-            "Supported formats are: " + ", ".join(SupportedImageTypes.all())
-        )
-        return Response(json.dumps(asdict(api_doc)), mimetype=JSON_MIME_TYPE)
-    if request.method == "POST":
-        o = {}
-        if "file" in request.files:
-            o["uploaded"] = {}
-            uploaded = request.files["file"].read()
-            o["uploaded"]["size"] = len(uploaded)
-            try:
-                mime = magic.from_buffer(uploaded, mime=True)
-                o["uploaded"]["mime"] = mime
-            except:  # noqa
-                api_error = APIError(message="Unable to determine the file type")
-                return Response(
-                    json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
-                )
-            try:
-                im = Image.open(io.BytesIO(uploaded))
-                im_size = im.size
-            except:  # noqa
-                api_error = APIError(
-                    message="Unable to determine the size of the image"
-                )
-                return Response(
-                    json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
-                )
-            if mime not in SupportedImageTypes.all():
-                if mime.startswith("image/"):
-                    capture_message("Unsupported image type received: " + mime)
-                api_error = APIError(
-                    message="The uploaded file is not in a supported format"
-                )
-                return Response(
-                    json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
-                )
-            else:
-                """
-                We need to rotate the JPEG image if it has Orientation tag.
-                """
-                if mime == SupportedImageTypes.IMAGE_JPEG.value:
-                    for orientation in ExifTags.TAGS.keys():
-                        if ExifTags.TAGS[orientation] == "Orientation":
-                            break
+    # check uploaded file is valid or not
+    if _uploaded := request.files.get("file"):
+        return error(APIError(message="No file was uploaded"))
+    uploaded = _uploaded.read()
+    if not (mime := _get_mime(uploaded)):
+        return error(APIError(message="Unable to determine the file type"))
 
-                    exif = im._getexif()
+    if mime not in SupportedImageTypes.all():
+        if mime.startswith("image/"):
+            capture_message(f"Unsupported image type received: {mime}")
+        return error(APIError(message="The uploaded file is not in a supported format"))
 
-                    if exif is not None and orientation in exif:
-                        if exif[orientation] == 3:
-                            im = im.rotate(180, expand=True)
-                        elif exif[orientation] == 6:
-                            im = im.rotate(270, expand=True)
-                        elif exif[orientation] == 8:
-                            im = im.rotate(90, expand=True)
+    try:
+        img: Image = Image.open(io.BytesIO(uploaded))
+        im_size = img.size
+    except:  # noqa
+        return error(APIError(message="Unable to determine the size of the image"))
 
-                    im_size = im.size
+    # We need to rotate the JPEG image if it has Orientation tag.
+    # TODO replace rotate part with `exiftool` or `PIL`.
+    if mime == SupportedImageTypes.IMAGE_JPEG.value:
+        uploaded = try_to_rotate(img)
+        im_size = len(uploaded)
 
-                    rotated = io.BytesIO()
-                    im.save(rotated, format="JPEG", quality=95)
-                    uploaded = rotated.getvalue()
+    # Now we have a valid image, and we know its size and type.
+    # Resize it to each size contained in `AvatarSize`.
 
-                """
-                Now we have a valid image and we know its size and type.
-                Resize it to 6 different sizes:
+    def _rescale(data: bytes, box_size: int) -> bytes | None:
+        if not all(i >= box_size for i in im_size):
+            return
+        return _rescale_avatar(data, box_size)
 
-                - 24x24 (mini)
-                - 48x48 (normal)
-                - 73x73 (large)
-                - 128x128 (xl)
-                - 256x256 (xxl)
-                - 512x512 (xxxl)
-                """
-                try:
-                    start = time.time()
+    start = time.time()
+    try:
+        base_avatar = _rescale(uploaded, max(AvatarSize))
+        avatars = {
+            f"avatar{size}": {
+                "size": len(rescaled_avatar),
+                "body": base64.b64encode(rescaled_avatar).decode("utf-8"),
+            }
+            for size in AvatarSize
+            if (rescaled_avatar := _rescale(base_avatar, size))
+        }
+    except Exception as e:  # noqa
+        capture_exception(e)
+        return error(APIError(message=f"Failed to resize the uploaded image file: {e}"))
+    end = time.time()
+    return success(
+        {
+            "uploaded": {
+                "size": len(uploaded),
+                "mime": mime,
+            },
+            "status": "ok",
+            "success": True,
+            "start": start,
+            "end": end,
+            "cost": int((end - start) * 1000),
+            **avatars,
+        }
+    )
 
-                    avatar512 = None
-                    if im_size[0] >= 512 and im_size[1] >= 512:
-                        avatar512 = _rescale_avatar(uploaded, 512)
-                        o["avatar512"] = {}
-                        o["avatar512"]["size"] = len(avatar512)
-                        o["avatar512"]["body"] = base64.b64encode(avatar512).decode(
-                            "utf-8"
-                        )
-                    if avatar512 is not None:
-                        upstream = avatar512
-                    else:
-                        upstream = uploaded
 
-                    sizes = [256, 128, 73, 48, 24]
-                    for size in sizes:
-                        if im_size[0] >= size and im_size[1] >= size:
-                            avatar = _rescale_avatar(upstream, size)
-                            o["avatar" + str(size)] = {}
-                            o["avatar" + str(size)]["size"] = len(avatar)
-                            o["avatar" + str(size)]["body"] = base64.b64encode(
-                                avatar
-                            ).decode("utf-8")
+def _get_mime(buffer: bytes) -> str | None:
+    try:
+        return magic.from_buffer(buffer, mime=True)
+    except:  # noqa
+        return None
 
-                    end = time.time()
-                    elapsed = end - start
-                    o["cost"] = int(elapsed * 1000)
-                    o["status"] = "ok"
-                    o["success"] = True
-                    return Response(json.dumps(o), mimetype=JSON_MIME_TYPE)
-                except Exception as e:  # noqa
-                    capture_exception(e)
-                    api_error = APIError(
-                        message=f"Failed to resize the uploaded image file: {e}"
-                    )
-                    return Response(
-                        json.dumps(asdict(api_error)),
-                        status=400,
-                        mimetype=JSON_MIME_TYPE,
-                    )
-        else:
-            api_error = APIError(message="No file was uploaded")
-            return Response(
-                json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
-            )
+
+def try_to_rotate(image: Image) -> bytes:
+    """Try to rotate the image if it has Orientation tag.
+
+    :param image: image to rotate.
+    :return: bytes: Rotated image content in bytes.
+    """
+    orientation = next(
+        (ori for ori, name in ExifTags.TAGS.items() if name == "Orientation"), None
+    )
+    match image.getexif().get(orientation):
+        case 3:
+            rotate_img = image.rotate(180, expand=True)
+        case 6:
+            rotate_img = image.rotate(270, expand=True)
+        case 8:
+            rotate_img = image.rotate(90, expand=True)
+        case _:
+            rotate_img = image
+
+    with io.BytesIO() as rotated:
+        rotate_img.save(rotated, format="JPEG", quality=95)
+        return rotated.getvalue()
 
 
 def _rescale_avatar(data: bytes, box: int) -> bytes | None:
     try:
-        f = io.BytesIO(data)
-        with Image.open(f) as image:
+        with Image.open(io.BytesIO(data)) as image, io.BytesIO() as io_obj:
             thumbnail = resizeimage.resize_cover(image, [box, box], validate=False)
-            o = io.BytesIO()
-            thumbnail.save(o, format="PNG")
-            v = o.getvalue()
-            o.close()
-            f.close()
-            return v
+            thumbnail.save(io_obj, format="PNG")
+            return io_obj.getvalue()
     except Exception as e:  # noqa
         capture_exception(e)
         return None
@@ -527,15 +499,10 @@ def _rescale_avatar(data: bytes, box: int) -> bytes | None:
 
 def _rescale_aspect_ratio(data: bytes, box: int) -> Tuple[bytes | None, str | None]:
     try:
-        f = io.BytesIO(data)
-        with Image.open(f) as image:
+        with Image.open(io.BytesIO(data)) as image, io.BytesIO() as io_obj:
             thumbnail = resizeimage.resize_thumbnail(image, [box, box])
-            o = io.BytesIO()
-            thumbnail.save(o, format=image.format)
-            v = o.getvalue()
-            o.close()
-            f.close()
-            return v, image.format
+            thumbnail.save(io_obj, format=image.format)
+            return io_obj.getvalue(), image.format
     except Exception as e:  # noqa
         capture_exception(e)
         return None, None
