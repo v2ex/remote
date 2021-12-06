@@ -5,4 +5,5 @@
 .python-version
 config.py
 Vagrantfile
+.DS_Store
 dev
