@@ -15,7 +15,8 @@ repos:
       - id: file-contents-sorter
         files: |
           (?x)(
-              requirements.txt
+            requirements.txt|
+            .gitignore
           )
 
   - repo: https://github.com/PyCQA/isort
