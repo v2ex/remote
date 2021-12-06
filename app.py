@@ -224,6 +224,10 @@ class SupportImgMIME(Enum):
     IMAGE_WEBP = "image/webp"
     IMAGE_BMP = "image/bmp"
     IMAGE_TIFF = "image/tiff"
+    IMAGE_HEIF = 'image/heif'
+    IMAGE_HEIC = 'image/heic'
+    IMAGE_JP2 = 'image/jp2'
+    IMAGE_VND_ADOBE_PHOTOSHOP = 'image/vnd.adobe.photoshop'
 
     @classmethod
     def all(cls):
@@ -401,32 +405,22 @@ def resize_avatar():
                 im = Image.open(io.BytesIO(uploaded))
                 im_size = im.size
             except:  # noqa
-                o["status"] = "error"
-                o["message"] = "Unable to determine the size of the image"
-                return Response(json.dumps(o), status=400, mimetype=JSON_MIME_TYPE)
-            if mime not in [
-                "image/jpeg",
-                "image/png",
-                "image/gif",
-                "image/webp",
-                "image/bmp",
-                "image/tiff",
-                "image/heif",
-                "image/heic",
-                "image/jp2",
-                "image/vnd.adobe.photoshop",
-                "image/x-icns",
-            ]:
+                api_error = APIError(message="Unable to determine the size of the image")
+                return Response(
+                    json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
+                )
+            if mime not in SupportImgMIME.all():
                 if mime.startswith("image/"):
                     capture_message("Unsupported image type received: " + mime)
-                o["status"] = "error"
-                o["message"] = "The uploaded file is not in a supported format"
-                return Response(json.dumps(o), status=400, mimetype=JSON_MIME_TYPE)
+                api_error = APIError(message="The uploaded file is not in a supported format")
+                return Response(
+                    json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
+                )
             else:
                 """
                 We need to rotate the JPEG image if it has Orientation tag.
                 """
-                if mime == "image/jpeg":
+                if mime == SupportImgMIME.IMAGE_JPEG.value:
                     for orientation in ExifTags.TAGS.keys():
                         if ExifTags.TAGS[orientation] == "Orientation":
                             break
