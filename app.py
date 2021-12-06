@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass
 from enum import Enum, unique
 from typing import List, Tuple
 
+import config
 import dns.resolver
 import magic
 import pillow_avif  # noqa
@@ -27,7 +28,6 @@ from resizeimage import resizeimage
 from sentry_sdk import capture_exception, capture_message
 from sentry_sdk.integrations.flask import FlaskIntegration
 
-import config
 from constants import JSON_MIME_TYPE
 
 register_heif_opener()
@@ -224,10 +224,10 @@ class SupportImgMIME(Enum):
     IMAGE_WEBP = "image/webp"
     IMAGE_BMP = "image/bmp"
     IMAGE_TIFF = "image/tiff"
-    IMAGE_HEIF = 'image/heif'
-    IMAGE_HEIC = 'image/heic'
-    IMAGE_JP2 = 'image/jp2'
-    IMAGE_VND_ADOBE_PHOTOSHOP = 'image/vnd.adobe.photoshop'
+    IMAGE_HEIF = "image/heif"
+    IMAGE_HEIC = "image/heic"
+    IMAGE_JP2 = "image/jp2"
+    IMAGE_VND_ADOBE_PHOTOSHOP = "image/vnd.adobe.photoshop"
     IMAGE_X_ICNS = "image/x-icns"
 
     @classmethod
@@ -406,14 +406,18 @@ def resize_avatar():
                 im = Image.open(io.BytesIO(uploaded))
                 im_size = im.size
             except:  # noqa
-                api_error = APIError(message="Unable to determine the size of the image")
+                api_error = APIError(
+                    message="Unable to determine the size of the image"
+                )
                 return Response(
                     json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
                 )
             if mime not in SupportImgMIME.all():
                 if mime.startswith("image/"):
                     capture_message("Unsupported image type received: " + mime)
-                api_error = APIError(message="The uploaded file is not in a supported format")
+                api_error = APIError(
+                    message="The uploaded file is not in a supported format"
+                )
                 return Response(
                     json.dumps(asdict(api_error)), status=400, mimetype=JSON_MIME_TYPE
                 )
