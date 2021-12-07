@@ -4,10 +4,7 @@
 import base64
 import io
 import json
-import os
 import socket
-import subprocess
-import tempfile
 import time
 from collections import namedtuple
 from dataclasses import asdict, dataclass, field, is_dataclass
@@ -275,44 +272,19 @@ def prepare_jpeg():
         err = APIError(message="This endpoint is only for processing JPEG images")
         return error(err)
 
-    # check extra tools on system
-    # TODO replace extra tools(`exiftool`/`jhead`) with PIL.
-    if not (exiftool_path := _get_exiftool_path()):
-        return error(APIError(message="exiftool not installed"), status=500)
-    if not (jhead_path := _get_jhead_path()):
-        return error(APIError(message="jhead not installed"), status=500)
-
     # Now we have a valid JPEG.
     # Two things to do:
     #
-    # 1. Remove GPS
+    # 1. Remove EXIF
     # 2. Auto Rotate
-    fd, path = tempfile.mkstemp()
     try:
-        # 1. Remove GPS by using `exiftool`.
-        with os.fdopen(fd, "wb") as tmp:
-            tmp.write(uploaded)
-        subprocess.call(
-            [
-                exiftool_path,
-                "-overwrite_original_in_place",
-                "-P",
-                "-gps:all=",
-                "-xmp:geotag=",
-                path,
-            ],
-            shell=False,
-        )
-        # 2. Auto rotate by using `jhead`.
-        subprocess.call([jhead_path, "-v", "-exonly", "-autorot", path], shell=False)
-        with open(path, "rb") as tmp:
-            prepared = base64.b64encode(tmp.read()).decode("utf-8")
+        uploaded_image = _load_from_bytes(uploaded)
+        no_exif_img = _remove_exif(uploaded_image)
+        rotated_img = _auto_rotated(no_exif_img)
+        output_b64_content = _get_b64_content(rotated_img)
     except Exception as e:  # noqa
         capture_exception(e)
         return error(APIError(message=f"Failed to prepare image: {e}"), status=500)
-    finally:
-        os.remove(path)
-
     return success(
         {
             "uploaded": {
@@ -320,7 +292,7 @@ def prepare_jpeg():
                 "mime": mime,
             },
             "status": "ok",
-            "output": prepared,
+            "output": output_b64_content,
             "success": True,
         }
     )
@@ -429,7 +401,7 @@ def resize_avatar():
     def _try_rescale(image: Image, box_size: int) -> bytes | None:
         if not all(i >= box_size for i in im_size):
             return
-        return _rescale_avatar(image, box_size)
+        return _rescale_avatar(img, box_size)
 
     start = time.time()
     try:
@@ -468,11 +440,38 @@ def resize_avatar():
     )
 
 
+def _load_from_bytes(uploaded_data: bytes) -> Image:
+    """Convert uploaded content to Image to handle."""
+    with io.BytesIO() as buffered:
+        buffered.write(uploaded_data)
+        return Image.open(buffered).copy()
+
+
+def _get_b64_content(image: Image) -> str:
+    with io.BytesIO() as buffered:
+        image.save(buffered, format="JPEG")
+        return base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+
 def _get_mime(buffer: bytes) -> str | None:
+    """Try to get the mime type of the uploaded data."""
     try:
         return magic.from_buffer(buffer, mime=True)
     except:  # noqa
         return None
+
+
+def _remove_exif(image: Image) -> Image:
+    """Remove EXIF data from the image and return a new image."""
+    data = list(image.getdata())
+    no_exif_img: Image = Image.new(image.mode, image.size)  # noqa
+    no_exif_img.putdata(data)
+    return no_exif_img
+
+
+def _auto_rotated(image: Image) -> Image:
+    """Auto-rotate the image according to its EXIF data and return a new image."""
+    return ImageOps.exif_transpose(image)
 
 
 def _rescale_avatar(image: Image, box: int) -> bytes | None:
@@ -495,13 +494,3 @@ def _rescale_aspect_ratio(data: bytes, box: int) -> Tuple[bytes | None, str | No
     except Exception as e:  # noqa
         capture_exception(e)
         return None, None
-
-
-def _get_exiftool_path() -> str | None:
-    locations = ["/usr/bin/exiftool", "/opt/homebrew/bin/exiftool"]
-    return next((location for location in locations if os.path.exists(location)), None)
-
-
-def _get_jhead_path() -> str | None:
-    locations = ["/usr/bin/jhead", "/opt/homebrew/bin/jhead"]
-    return next((location for location in locations if os.path.exists(location)), None)
