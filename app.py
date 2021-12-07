@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import time
 from collections import namedtuple
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass, field
 from enum import Enum, IntEnum, unique
 from functools import partial, wraps
 from typing import Any, List, Tuple
@@ -105,20 +105,20 @@ def home():
 class Pong:
     status: str = "ok"
     message: str = "pong"
-    uptime: float = time.time() - started
+    uptime: float = field(default_factory=lambda: time.time() - started)
     success: bool = True
 
 
 @app.route("/ping")
 def ping():
-    return success(Pong(uptime=time.time() - started))
+    return success(Pong())
 
 
 @dataclass
 class WorkerInfo:
     status: str = "ok"
     uid: str = config.uid
-    uptime: float = time.time() - started
+    uptime: float = field(default_factory=lambda: time.time() - started)
     country: str = config.country
     region: str = config.region
     success: bool = True
@@ -126,7 +126,7 @@ class WorkerInfo:
 
 @app.route("/hello")
 def hello():
-    return success(WorkerInfo(uptime=time.time() - started))
+    return success(WorkerInfo())
 
 
 IPRecord = namedtuple(
@@ -209,7 +209,7 @@ class ResolveResp:
     ttl: float
     answers: List
     nameservers: List[str]
-    status: str = None  # TODO should be bool?
+    status: str = None
     success: bool = True
 
     def __post_init__(self):
