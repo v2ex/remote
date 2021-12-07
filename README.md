@@ -25,7 +25,7 @@ sudo apt install libimage-exiftool-perl jhead libmagic-dev
 When developing on macOS, you can install those packages with Homebrew:
 
 ```
-brew install exiftool jhead
+brew install exiftool jhead libmagic
 ```
 
 ## Endpoints
