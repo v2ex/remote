@@ -10,7 +10,7 @@ import subprocess
 import tempfile
 import time
 from collections import namedtuple
-from dataclasses import asdict, dataclass, is_dataclass, field
+from dataclasses import asdict, dataclass, field, is_dataclass
 from enum import Enum, IntEnum, unique
 from functools import partial, wraps
 from typing import Any, List, Tuple
@@ -22,7 +22,7 @@ import pyipip
 import sentry_sdk
 from dns.exception import DNSException
 from flask import Flask, Response, request
-from PIL import ExifTags, Image
+from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 from resizeimage import resizeimage
 from sentry_sdk import capture_exception, capture_message
@@ -163,7 +163,7 @@ def ipip(ip):
 
     try:
         ip_fields = ipdb.lookup(ip).split("\t")
-        # remove a field(`status`) that we assigned.
+        # subtract the number of fields that we own assigned.
         except_ip_meta_length = len(IPRecord._fields) - 2
         ip_record = IPRecord("ok", True, *ip_fields[:except_ip_meta_length])
         return success(ip_record._asdict())
@@ -411,29 +411,29 @@ def resize_avatar():
         return error(APIError(message="Unable to determine the size of the image"))
 
     # We need to rotate the JPEG image if it has Orientation tag.
-    # TODO replace rotate part with `exiftool` or `PIL`.
     if mime == SupportedImageTypes.IMAGE_JPEG.value:
-        uploaded = try_to_rotate(img)
-        im_size = len(uploaded)
+        img = ImageOps.exif_transpose(img)
+        im_size = img.size
 
     # Now we have a valid image, and we know its size and type.
     # Resize it to each size contained in `AvatarSize`.
 
-    def _rescale(data: bytes, box_size: int) -> bytes | None:
+    def _rescale(image: Image, box_size: int) -> bytes | None:
         if not all(i >= box_size for i in im_size):
             return
-        return _rescale_avatar(data, box_size)
+        return _rescale_avatar(image, box_size)
 
     start = time.time()
     try:
-        base_avatar = _rescale(uploaded, max(AvatarSize))
+        base_avatar_data = _rescale(img, max(AvatarSize))
+        base_avatar = Image.open(io.BytesIO(base_avatar_data))
         avatars = {
             f"avatar{size}": {
-                "size": len(rescaled_avatar),
-                "body": base64.b64encode(rescaled_avatar).decode("utf-8"),
+                "size": len(rescaled_avatar_data),
+                "body": base64.b64encode(rescaled_avatar_data).decode("utf-8"),
             }
             for size in AvatarSize
-            if (rescaled_avatar := _rescale(base_avatar, size))
+            if (rescaled_avatar_data := _rescale(base_avatar, size))
         }
     except Exception as e:  # noqa
         capture_exception(e)
@@ -462,33 +462,9 @@ def _get_mime(buffer: bytes) -> str | None:
         return None
 
 
-def try_to_rotate(image: Image) -> bytes:
-    """Try to rotate the image if it has Orientation tag.
-
-    :param image: image to rotate.
-    :return: bytes: Rotated image content in bytes.
-    """
-    orientation = next(
-        (ori for ori, name in ExifTags.TAGS.items() if name == "Orientation"), None
-    )
-    match image.getexif().get(orientation):
-        case 3:
-            rotate_img = image.rotate(180, expand=True)
-        case 6:
-            rotate_img = image.rotate(270, expand=True)
-        case 8:
-            rotate_img = image.rotate(90, expand=True)
-        case _:
-            rotate_img = image
-
-    with io.BytesIO() as rotated:
-        rotate_img.save(rotated, format="JPEG", quality=95)
-        return rotated.getvalue()
-
-
-def _rescale_avatar(data: bytes, box: int) -> bytes | None:
+def _rescale_avatar(image: Image, box: int) -> bytes | None:
     try:
-        with Image.open(io.BytesIO(data)) as image, io.BytesIO() as io_obj:
+        with io.BytesIO() as io_obj:
             thumbnail = resizeimage.resize_cover(image, [box, box], validate=False)
             thumbnail.save(io_obj, format="PNG")
             return io_obj.getvalue()
