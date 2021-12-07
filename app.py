@@ -275,12 +275,12 @@ def prepare_jpeg():
     # Now we have a valid JPEG.
     # Two things to do:
     #
-    # 1. Remove EXIF
+    # 1. Remove GPS
     # 2. Auto Rotate
     try:
         uploaded_image = _load_from_bytes(uploaded)
-        no_exif_img = _remove_exif(uploaded_image)
-        rotated_img = _auto_rotated(no_exif_img)
+        no_gps_img = _remove_gps(uploaded_image)
+        rotated_img = _auto_rotated(no_gps_img)
         output_b64_content = _get_b64_content(rotated_img)
     except Exception as e:  # noqa
         capture_exception(e)
@@ -461,12 +461,14 @@ def _get_mime(buffer: bytes) -> str | None:
         return None
 
 
-def _remove_exif(image: Image) -> Image:
-    """Remove EXIF data from the image and return a new image."""
-    data = list(image.getdata())
-    no_exif_img: Image = Image.new(image.mode, image.size)  # noqa
-    no_exif_img.putdata(data)
-    return no_exif_img
+def _remove_gps(image: Image) -> Image:
+    """Remove GPS data from the image EXIF and return a new image."""
+    copied_image = image.copy()
+    exif = copied_image.getexif()
+    # see more about magic number `0x8825` from
+    # [Pillow](https://pillow.readthedocs.io/en/stable/releasenotes/8.2.0.html#image-getexif-exif-and-gps-ifd)
+    exif.pop(0x8825, None)
+    return copied_image
 
 
 def _auto_rotated(image: Image) -> Image:

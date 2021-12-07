@@ -29,6 +29,28 @@ def test_dns_resolve(client):
     assert response.status_code == 200
 
 
+def test_images_prepare_jpeg(client):
+    data = {}
+    with open("tests/hello.jpeg", "rb") as image_file:
+        data["file"] = (image_file, "hello.jpeg")
+        response = client.post(
+            "/images/prepare_jpeg",
+            data=data,
+            follow_redirects=True,
+            content_type="multipart/form-data",
+        )
+        assert response.status_code == 200
+        assert b"output" in response.data
+
+        o = json.loads(response.data)
+
+        uploaded_size = o["uploaded"]["size"]
+        assert uploaded_size == len(open("tests/hello.jpeg", "rb").read())
+
+        img = Image.open(io.BytesIO(base64.b64decode(o["output"])))
+        assert img.getexif() == {}
+
+
 def test_images_fit_320(client):
     data = {}
     with open("tests/hello.png", "rb") as image_file:
