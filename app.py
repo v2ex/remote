@@ -283,6 +283,8 @@ def image_info():
     uploaded = _uploaded.read()
     if not (mime := _get_mime(uploaded)):
         return error(APIError(message="Unable to determine the file type"))
+    if not mime.startswith("image/"):
+        return error(APIError(message="Non-image file was provided"))
     try:
         if mime == SupportedImageTypes.IMAGE_SVG.value:
             uploaded = cairosvg.svg2png(
