@@ -139,3 +139,17 @@ def test_images_resize_avatar_1px(client):
         assert b"avatar128" not in response.data
         assert b"avatar256" not in response.data
         assert b"avatar512" not in response.data
+
+
+def test_images_info(client):
+    data = {}
+    with open("tests/hello.png", "rb") as image_file:
+        data["file"] = (image_file, "hello.png")
+        response = client.post(
+            "/images/info",
+            data=data,
+            follow_redirects=True,
+            content_type="multipart/form-data",
+        )
+        assert response.status_code == 200
+        assert b"image/png" in response.data
