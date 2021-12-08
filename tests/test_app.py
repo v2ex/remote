@@ -150,6 +150,11 @@ def test_images_resize_avatar_1px(client):
         assert b"avatar512" not in response.data
 
 
+def test_images_info_api_doc(client):
+    response = client.get("/images/info")
+    assert b"usage" in response.data
+
+
 def test_images_info(client):
     data = {}
     with open("tests/hello.png", "rb") as image_file:
