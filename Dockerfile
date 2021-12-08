@@ -2,7 +2,7 @@ FROM python:3.10-slim
 
 LABEL org.opencontainers.image.authors="livid@v2ex.com"
 
-RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -yq --no-install-recommends libimage-exiftool-perl jhead libmagic-dev libpng-dev libjpeg-dev libwebp-dev libtiff-dev zlib1g-dev libfreetype-dev libheif-dev libde265-dev
+RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -yq --no-install-recommends libimage-exiftool-perl jhead libmagic-dev libpng-dev libjpeg-dev libwebp-dev libtiff-dev zlib1g-dev libfreetype-dev libheif-dev libde265-dev libcairo2-dev
 
 COPY ./requirements.txt /app/requirements.txt
 COPY ./dev/ipip.datx /opt/data/ipip.datx
