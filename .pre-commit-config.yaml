@@ -10,8 +10,12 @@ repos:
       - id: check-merge-conflict
       - id: check-yaml
       - id: end-of-file-fixer
+        exclude: .svg$
       - id: trailing-whitespace
-        exclude: .md$
+        exclude: (?x)(
+            .md$|
+            .svg$
+          )
       - id: file-contents-sorter
         files: |
           (?x)(
