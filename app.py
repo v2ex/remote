@@ -432,11 +432,24 @@ def resize_avatar():
             uploaded = cairosvg.svg2png(
                 bytestring=uploaded,
                 dpi=300,
-                output_width=512,
-                scale=1,
-                output_height=512,
+                scale=2,
             )
             img = Image.open(io.BytesIO(uploaded))
+            im_size = img.size
+
+            if im_size[0] > im_size[1]:
+                background = Image.new("RGBA", (im_size[0], im_size[0]), (0, 0, 0, 0))
+                x = 0
+                y = int((im_size[0] - im_size[1]) / 2)
+                background.paste(img, (x, y))
+            else:
+                background = Image.new("RGBA", (im_size[1], im_size[1]), (0, 0, 0, 0))
+                x = int((im_size[1] - im_size[0]) / 2)
+                y = 0
+                background.paste(img, (x, y))
+
+            img = background
+
             im_size = img.size
         except Exception as e:  # noqa
             capture_exception(e)
