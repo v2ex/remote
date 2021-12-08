@@ -1,6 +1,6 @@
 # Remote Worker
 
-![](./coverage.svg)
+![](https://github.com/v2ex/remote/workflows/CI/badge.svg) ![](./coverage.svg)
 
 ## Separation of Responsibilities
 
