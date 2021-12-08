@@ -1,5 +1,7 @@
 # Remote Worker
 
+![](./coverage.svg)
+
 ## Separation of Responsibilities
 
 There are several reasons to move some processing out of the main code base for security or performance:
