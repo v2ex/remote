@@ -3,4 +3,5 @@ nameservers = ["1.1.1.1", "8.8.8.8", "8.8.4.4"]
 region = "us-west"
 country = "US"
 sentry_dsn = ""
+sentry_environment = "production"
 ipip_db_path = ""
