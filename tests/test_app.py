@@ -1,7 +1,6 @@
 import base64
 import importlib.util
 import io
-import json
 import sys
 
 import pytest
@@ -25,12 +24,14 @@ def client():
 
 def test_hello(client):
     response = client.get("/hello")
-    assert b"region" in response.data
+    assert "region" in response.json
 
 
 def test_ping(client):
     response = client.get("/ping")
-    assert b"pong" in response.data
+    assert response.json.get("message") == "pong"
+    assert response.json.get("status") == "ok"
+    assert response.json.get("success") is True
 
 
 def test_dns_resolve(client):
@@ -49,9 +50,9 @@ def test_images_prepare_jpeg(client):
             content_type="multipart/form-data",
         )
         assert response.status_code == 200
-        assert b"output" in response.data
+        assert "output" in response.json
 
-        o = json.loads(response.data)
+        o = response.json
 
         uploaded_size = o["uploaded"]["size"]
         assert uploaded_size == len(open("tests/hello.jpeg", "rb").read())
@@ -71,9 +72,9 @@ def test_images_fit_320(client):
             content_type="multipart/form-data",
         )
         assert response.status_code == 200
-        assert b"output" in response.data
+        assert "output" in response.json
 
-        o = json.loads(response.data)
+        o = response.json
 
         im = Image.open(io.BytesIO(base64.b64decode(o["output"])))
         assert im.size == (320, 320)
@@ -91,10 +92,10 @@ def test_images_resize_avatar(client):
         )
         assert response.status_code == 200
 
-        o = json.loads(response.data)
+        o = response.json
 
         for size in AvatarSize:
-            assert f"avatar{size}".encode("utf-8") in response.data
+            assert f"avatar{size}" in response.json
             im = Image.open(io.BytesIO(base64.b64decode(o[f"avatar{size}"]["body"])))
             assert im.size == (size, size)
 
@@ -111,10 +112,10 @@ def test_images_resize_avatar_svg(client):
         )
         assert response.status_code == 200
 
-        o = json.loads(response.data)
+        o = response.json
 
         for size in AvatarSize:
-            assert f"avatar{size}".encode("utf-8") in response.data
+            assert f"avatar{size}" in response.json
             im = Image.open(io.BytesIO(base64.b64decode(o[f"avatar{size}"]["body"])))
             assert im.size == (size, size)
 
@@ -131,28 +132,28 @@ def test_images_resize_avatar_1px(client):
         )
         assert response.status_code == 200
 
-        o = json.loads(response.data)
+        o = response.json
 
-        assert b"avatar24" in response.data
+        assert "avatar24" in response.json
         im = Image.open(io.BytesIO(base64.b64decode(o["avatar24"]["body"])))
         assert im.size == (24, 24)
 
-        assert b"avatar48" in response.data
+        assert "avatar48" in response.json
         im = Image.open(io.BytesIO(base64.b64decode(o["avatar48"]["body"])))
         assert im.size == (48, 48)
 
-        assert b"avatar73" in response.data
+        assert "avatar73" in response.json
         im = Image.open(io.BytesIO(base64.b64decode(o["avatar73"]["body"])))
         assert im.size == (73, 73)
 
-        assert b"avatar128" not in response.data
-        assert b"avatar256" not in response.data
-        assert b"avatar512" not in response.data
+        assert "avatar128" not in response.json
+        assert "avatar256" not in response.json
+        assert "avatar512" not in response.json
 
 
 def test_images_info_api_doc(client):
     response = client.get("/images/info")
-    assert b"usage" in response.data
+    assert "usage" in response.json
 
 
 def test_images_info(client):
@@ -166,4 +167,4 @@ def test_images_info(client):
             content_type="multipart/form-data",
         )
         assert response.status_code == 200
-        assert b"image/png" in response.data
+        assert response.json.get("mime_type") == "image/png"
