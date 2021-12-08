@@ -384,29 +384,26 @@ def resize_avatar():
             capture_message(f"Unsupported image type received: {mime}")
         return error(APIError(message="The uploaded file is not in a supported format"))
 
-    try:
-        img: Image = Image.open(io.BytesIO(uploaded))
-        im_size = img.size
-    except:  # noqa
-        return error(APIError(message="Unable to determine the size of the image"))
-
-    # We need to rotate the JPEG image if it has Orientation tag.
-    if mime == SupportedImageTypes.IMAGE_JPEG.value:
-        img = ImageOps.exif_transpose(img)
-        im_size = img.size
-
     # Now we have a valid image, and we know its size and type.
     # Resize it to each size contained in `AvatarSize`.
 
-    def _try_rescale(image: Image, box_size: int) -> bytes | None:
-        if not all(i >= box_size for i in im_size):
+    def _try_rescale(img: Image, target_size: int) -> bytes | None:
+        if not all(i >= target_size for i in img.size):
             return
-        return _rescale_avatar(img, box_size)
+        return _rescale_avatar(img, target_size)
 
     start = time.time()
     try:
-        base_avatar_data = _try_rescale(img, max(AvatarSize)) or uploaded
-        base_avatar = Image.open(io.BytesIO(base_avatar_data))
+        image = _load_from_bytes(uploaded)
+        rotated_image = _auto_rotated(image)
+
+        # confirmation basic avatar to resize
+        # try to use max size avatar otherwise use original(rotated)
+        if standard_max_size := _try_rescale(rotated_image, max(AvatarSize)):
+            base_avatar = Image.open(io.BytesIO(standard_max_size))
+        else:
+            base_avatar = rotated_image
+
         avatars = {}
         for size in AvatarSize:
             rescaled_avatar_data = None
