@@ -1,3 +1,4 @@
+cairosvg
 dnspython
 flask
 gunicorn
