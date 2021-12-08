@@ -1,11 +1,20 @@
 import base64
+import importlib.util
 import io
 import json
+import sys
 
 import pytest
 from PIL import Image
 
-from app import AvatarSize, app
+# mock config.py base on config.example.py
+module_name = "config"
+spec = importlib.util.spec_from_file_location(module_name, "config.example.py")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+sys.modules[module_name] = module
+
+from app import AvatarSize, app  # noqa
 
 
 @pytest.fixture()

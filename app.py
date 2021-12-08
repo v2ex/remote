@@ -50,7 +50,14 @@ app = Flask(__name__)
 
 started = time.time()
 
-ipdb = pyipip.IPIPDatabase(config.ipip_db_path)
+ipdb = None
+
+
+def get_ipdb():
+    global ipdb
+    if not ipdb:
+        ipdb = pyipip.IPIPDatabase(config.ipip_db_path)
+    return ipdb
 
 
 @dataclass
@@ -161,7 +168,8 @@ def ipip(ip):
         return error(APIError(message="Invalid IPv4 address provided"))
 
     try:
-        ip_fields = ipdb.lookup(ip).split("\t")
+        _ipdb = get_ipdb()
+        ip_fields = _ipdb.lookup(ip).split("\t")
         # subtract the number of fields that we own assigned.
         except_ip_meta_length = len(IPRecord._fields) - 2
         ip_record = IPRecord("ok", True, *ip_fields[:except_ip_meta_length])
