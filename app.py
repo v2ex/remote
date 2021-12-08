@@ -441,6 +441,14 @@ def resize_avatar():
     except:  # noqa
         return error(APIError(message="Unable to determine the size of the image"))
 
+    # We can enlarge .ico with Nearest Neighbor
+    if mime == SupportedImageTypes.IMAGE_ICO.value:
+        img = img.resize((512, 512), Image.NEAREST)
+        im_size = img.size
+        uploaded = io.BytesIO()
+        img.save(uploaded, format="PNG")
+        uploaded = uploaded.getvalue()
+
     # We need to rotate the JPEG image if it has Orientation tag.
     if mime == SupportedImageTypes.IMAGE_JPEG.value:
         img = ImageOps.exif_transpose(img)
