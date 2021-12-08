@@ -77,9 +77,10 @@ These original image formats are supported:
 - AVIF
 - PSD
 - ICNS
+- SVG
 
 The output format is always in PNG.
 
 curl example for sending such a request:
 
-    curl -X POST -F "file=@/path/to/image.jpg" http://localhost:5000/images/rescale_avatar
+    curl -X POST -F "file=@/path/to/image.jpg" http://localhost:5000/images/resize_avatar
