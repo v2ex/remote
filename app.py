@@ -258,6 +258,7 @@ class SupportedImageTypes(Enum):
     IMAGE_VND_ADOBE_PHOTOSHOP = "image/vnd.adobe.photoshop"
     IMAGE_X_ICNS = "image/x-icns"
     IMAGE_SVG = "image/svg+xml"
+    IMAGE_ICO = "image/vnd.microsoft.icon"
 
     @classmethod
     def all(cls):
