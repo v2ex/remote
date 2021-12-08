@@ -425,16 +425,36 @@ def resize_avatar():
 
     start = time.time()
     try:
-        base_avatar_data = _rescale(img, max(AvatarSize))
-        base_avatar = Image.open(io.BytesIO(base_avatar_data))
-        avatars = {
-            f"avatar{size}": {
-                "size": len(rescaled_avatar_data),
-                "body": base64.b64encode(rescaled_avatar_data).decode("utf-8"),
-            }
-            for size in AvatarSize
-            if (rescaled_avatar_data := _rescale(base_avatar, size))
-        }
+        avatars = {}
+        avatar512 = None
+        if im_size[0] >= 512 and im_size[1] >= 512:
+            avatar512 = _rescale_avatar(img, 512)
+            avatars["avatar512"] = {}
+            avatars["avatar512"]["size"] = len(avatar512)
+            avatars["avatar512"]["body"] = base64.b64encode(avatar512).decode("utf-8")
+        if avatar512 is not None:
+            upstream = Image.open(io.BytesIO(avatar512))
+        else:
+            upstream = img
+
+        new_sizes = [256, 128]
+        for size in new_sizes:
+            if im_size[0] >= size and im_size[1] >= size:
+                avatar = _rescale_avatar(upstream, size)
+                avatars["avatar" + str(size)] = {}
+                avatars["avatar" + str(size)]["size"] = len(avatar)
+                avatars["avatar" + str(size)]["body"] = base64.b64encode(avatar).decode(
+                    "utf-8"
+                )
+
+        classic_sizes = [73, 48, 24]
+        for size in classic_sizes:
+            avatar = _rescale_avatar(upstream, size)
+            avatars["avatar" + str(size)] = {}
+            avatars["avatar" + str(size)]["size"] = len(avatar)
+            avatars["avatar" + str(size)]["body"] = base64.b64encode(avatar).decode(
+                "utf-8"
+            )
     except Exception as e:  # noqa
         capture_exception(e)
         return error(APIError(message=f"Failed to resize the uploaded image file: {e}"))
