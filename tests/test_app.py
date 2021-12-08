@@ -79,3 +79,9 @@ def test_images_resize_avatar_1px(client):
             content_type="multipart/form-data",
         )
         assert response.status_code == 200
+        assert b"avatar24" in response.data
+        assert b"avatar48" in response.data
+        assert b"avatar73" in response.data
+        assert b"avatar128" not in response.data
+        assert b"avatar256" not in response.data
+        assert b"avatar512" not in response.data
