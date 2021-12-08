@@ -422,6 +422,10 @@ def resize_avatar():
 
             img = background
 
+            uploaded = io.BytesIO()
+            img.save(uploaded, format="PNG")
+            uploaded = uploaded.getvalue()
+
             im_size = img.size
         except Exception as e:  # noqa
             capture_exception(e)
