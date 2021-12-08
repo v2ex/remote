@@ -4,10 +4,7 @@
 import base64
 import io
 import json
-import os
 import socket
-import subprocess
-import tempfile
 import time
 from collections import namedtuple
 from dataclasses import asdict, dataclass, field, is_dataclass
@@ -277,44 +274,19 @@ def prepare_jpeg():
         err = APIError(message="This endpoint is only for processing JPEG images")
         return error(err)
 
-    # check extra tools on system
-    # TODO replace extra tools(`exiftool`/`jhead`) with PIL.
-    if not (exiftool_path := _get_exiftool_path()):
-        return error(APIError(message="exiftool not installed"), status=500)
-    if not (jhead_path := _get_jhead_path()):
-        return error(APIError(message="jhead not installed"), status=500)
-
     # Now we have a valid JPEG.
     # Two things to do:
     #
     # 1. Remove GPS
     # 2. Auto Rotate
-    fd, path = tempfile.mkstemp()
     try:
-        # 1. Remove GPS by using `exiftool`.
-        with os.fdopen(fd, "wb") as tmp:
-            tmp.write(uploaded)
-        subprocess.call(
-            [
-                exiftool_path,
-                "-overwrite_original_in_place",
-                "-P",
-                "-gps:all=",
-                "-xmp:geotag=",
-                path,
-            ],
-            shell=False,
-        )
-        # 2. Auto rotate by using `jhead`.
-        subprocess.call([jhead_path, "-v", "-exonly", "-autorot", path], shell=False)
-        with open(path, "rb") as tmp:
-            prepared = base64.b64encode(tmp.read()).decode("utf-8")
+        uploaded_image = _load_from_bytes(uploaded)
+        no_gps_img = _remove_gps(uploaded_image)
+        rotated_img = _auto_rotated(no_gps_img)
+        output_b64_content = _get_b64_content(rotated_img)
     except Exception as e:  # noqa
         capture_exception(e)
         return error(APIError(message=f"Failed to prepare image: {e}"), status=500)
-    finally:
-        os.remove(path)
-
     return success(
         {
             "uploaded": {
@@ -322,7 +294,7 @@ def prepare_jpeg():
                 "mime": mime,
             },
             "status": "ok",
-            "output": prepared,
+            "output": output_b64_content,
             "success": True,
         }
     )
@@ -458,15 +430,23 @@ def resize_avatar():
     # Now we have a valid image, and we know its size and type.
     # Resize it to each size contained in `AvatarSize`.
 
-    def _try_rescale(image: Image, box_size: int) -> bytes | None:
-        if not all(i >= box_size for i in im_size):
+    def _try_rescale(img: Image, target_size: int) -> bytes | None:
+        if not all(i >= target_size for i in img.size):
             return
-        return _rescale_avatar(image, box_size)
+        return _rescale_avatar(img, target_size)
 
     start = time.time()
     try:
-        base_avatar_data = _try_rescale(img, max(AvatarSize)) or uploaded
-        base_avatar = Image.open(io.BytesIO(base_avatar_data))
+        image = _load_from_bytes(uploaded)
+        rotated_image = _auto_rotated(image)
+
+        # confirmation basic avatar to resize
+        # try to use max size avatar otherwise use original(rotated)
+        if standard_max_size := _try_rescale(rotated_image, max(AvatarSize)):
+            base_avatar = Image.open(io.BytesIO(standard_max_size))
+        else:
+            base_avatar = rotated_image
+
         avatars = {}
         for size in AvatarSize:
             rescaled_avatar_data = None
@@ -500,11 +480,40 @@ def resize_avatar():
     )
 
 
+def _load_from_bytes(uploaded_data: bytes) -> Image:
+    """Convert uploaded content to Image to handle."""
+    with io.BytesIO() as buffered:
+        buffered.write(uploaded_data)
+        return Image.open(buffered).copy()
+
+
+def _get_b64_content(image: Image) -> str:
+    with io.BytesIO() as buffered:
+        image.save(buffered, format="JPEG")
+        return base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+
 def _get_mime(buffer: bytes) -> str | None:
+    """Try to get the mime type of the uploaded data."""
     try:
         return magic.from_buffer(buffer, mime=True)
     except:  # noqa
         return None
+
+
+def _remove_gps(image: Image) -> Image:
+    """Remove GPS data from the image EXIF and return a new image."""
+    copied_image = image.copy()
+    exif = copied_image.getexif()
+    # see more about magic number `0x8825` from
+    # [Pillow](https://pillow.readthedocs.io/en/stable/releasenotes/8.2.0.html#image-getexif-exif-and-gps-ifd)
+    exif.pop(0x8825, None)
+    return copied_image
+
+
+def _auto_rotated(image: Image) -> Image:
+    """Auto-rotate the image according to its EXIF data and return a new image."""
+    return ImageOps.exif_transpose(image)
 
 
 def _rescale_avatar(image: Image, box: int) -> bytes | None:
@@ -527,13 +536,3 @@ def _rescale_aspect_ratio(data: bytes, box: int) -> Tuple[bytes | None, str | No
     except Exception as e:  # noqa
         capture_exception(e)
         return None, None
-
-
-def _get_exiftool_path() -> str | None:
-    locations = ["/usr/bin/exiftool", "/opt/homebrew/bin/exiftool"]
-    return next((location for location in locations if os.path.exists(location)), None)
-
-
-def _get_jhead_path() -> str | None:
-    locations = ["/usr/bin/jhead", "/opt/homebrew/bin/jhead"]
-    return next((location for location in locations if os.path.exists(location)), None)
