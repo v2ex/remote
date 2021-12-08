@@ -50,14 +50,14 @@ def test_images_prepare_jpeg(client):
             content_type="multipart/form-data",
         )
         assert response.status_code == 200
-        assert "output" in response.json
 
-        o = response.json
+        resp = response.json
 
-        uploaded_size = o["uploaded"]["size"]
+        assert "output" in resp
+        uploaded_size = resp["uploaded"]["size"]
         assert uploaded_size == len(open("tests/hello.jpeg", "rb").read())
 
-        img = Image.open(io.BytesIO(base64.b64decode(o["output"])))
+        img = Image.open(io.BytesIO(base64.b64decode(resp["output"])))
         assert img.getexif() == {}
 
 
@@ -72,11 +72,11 @@ def test_images_fit_320(client):
             content_type="multipart/form-data",
         )
         assert response.status_code == 200
-        assert "output" in response.json
 
-        o = response.json
+        resp = response.json
 
-        im = Image.open(io.BytesIO(base64.b64decode(o["output"])))
+        assert "output" in resp
+        im = Image.open(io.BytesIO(base64.b64decode(resp["output"])))
         assert im.size == (320, 320)
 
 
@@ -92,11 +92,11 @@ def test_images_resize_avatar(client):
         )
         assert response.status_code == 200
 
-        o = response.json
+        resp = response.json
 
         for size in AvatarSize:
-            assert f"avatar{size}" in response.json
-            im = Image.open(io.BytesIO(base64.b64decode(o[f"avatar{size}"]["body"])))
+            assert f"avatar{size}" in resp
+            im = Image.open(io.BytesIO(base64.b64decode(resp[f"avatar{size}"]["body"])))
             assert im.size == (size, size)
 
 
@@ -112,11 +112,11 @@ def test_images_resize_avatar_svg(client):
         )
         assert response.status_code == 200
 
-        o = response.json
+        resp = response.json
 
         for size in AvatarSize:
-            assert f"avatar{size}" in response.json
-            im = Image.open(io.BytesIO(base64.b64decode(o[f"avatar{size}"]["body"])))
+            assert f"avatar{size}" in resp
+            im = Image.open(io.BytesIO(base64.b64decode(resp[f"avatar{size}"]["body"])))
             assert im.size == (size, size)
 
 
@@ -132,23 +132,23 @@ def test_images_resize_avatar_1px(client):
         )
         assert response.status_code == 200
 
-        o = response.json
+        resp = response.json
 
-        assert "avatar24" in response.json
-        im = Image.open(io.BytesIO(base64.b64decode(o["avatar24"]["body"])))
+        assert "avatar24" in resp
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar24"]["body"])))
         assert im.size == (24, 24)
 
-        assert "avatar48" in response.json
-        im = Image.open(io.BytesIO(base64.b64decode(o["avatar48"]["body"])))
+        assert "avatar48" in resp
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar48"]["body"])))
         assert im.size == (48, 48)
 
-        assert "avatar73" in response.json
-        im = Image.open(io.BytesIO(base64.b64decode(o["avatar73"]["body"])))
+        assert "avatar73" in resp
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar73"]["body"])))
         assert im.size == (73, 73)
 
-        assert "avatar128" not in response.json
-        assert "avatar256" not in response.json
-        assert "avatar512" not in response.json
+        assert "avatar128" not in resp
+        assert "avatar256" not in resp
+        assert "avatar512" not in resp
 
 
 def test_images_info_api_doc(client):
@@ -167,4 +167,7 @@ def test_images_info(client):
             content_type="multipart/form-data",
         )
         assert response.status_code == 200
-        assert response.json.get("mime_type") == "image/png"
+
+        resp = response.json
+
+        assert resp.get("mime_type") == "image/png"

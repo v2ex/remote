@@ -170,7 +170,7 @@ def ipip(ip):
     try:
         _ipdb = get_ipdb()
         ip_fields = _ipdb.lookup(ip).split("\t")
-        # subtract the number of fields that we own assigned.
+        # Subtract the number of fields that we own assigned.
         except_ip_meta_length = len(IPRecord._fields) - 2
         ip_record = IPRecord("ok", True, *ip_fields[:except_ip_meta_length])
         return success(ip_record._asdict())
@@ -293,9 +293,7 @@ def image_info():
                 scale=1,
             )
         img: Image = Image.open(io.BytesIO(uploaded))
-        im_size = img.size
-        width = im_size[0]
-        height = im_size[1]
+        width, height = img.size
         binary_size = len(uploaded)
     except Exception as e:  # noqa
         if config.sentry_environment != "production":
@@ -318,7 +316,7 @@ def image_info():
     )
 )
 def prepare_jpeg():
-    # check uploaded file is valid or not
+    # Check uploaded file is valid or not.
     if not (_uploaded := request.files.get("file")):
         return error(APIError(message="No file was uploaded"))
     uploaded = _uploaded.read()
@@ -360,7 +358,7 @@ def prepare_jpeg():
     APIDoc(usage="Upload an image file and fit it into a box of the specified size")
 )
 def fit(box: int):
-    # check uploaded file is valid or not
+    # Check uploaded file is valid or not.
     if not (_uploaded := request.files.get("file")):
         return error(APIError(message="No file was uploaded"))
     uploaded = _uploaded.read()
@@ -429,7 +427,7 @@ class AvatarSize(IntEnum):
     )
 )
 def resize_avatar():
-    # check uploaded file is valid or not
+    # Check uploaded file is valid or not.
     if not (_uploaded := request.files.get("file")):
         return error(APIError(message="No file was uploaded"))
     uploaded = _uploaded.read()
@@ -507,12 +505,11 @@ def resize_avatar():
         image = _load_from_bytes(uploaded)
         rotated_image = _auto_rotated(image)
 
-        # confirmation basic avatar to resize
-        # try to use max size avatar otherwise use original(rotated)
-        if standard_max_size := _try_rescale(rotated_image, max(AvatarSize)):
-            base_avatar = Image.open(io.BytesIO(standard_max_size))
-        else:
-            base_avatar = rotated_image
+        # Confirmation basic avatar to resize.
+        # Try to use max size avatar otherwise use original(rotated).
+        base_avatar = rotated_image
+        if _standard_avatar := _try_rescale(rotated_image, max(AvatarSize)):
+            base_avatar = _load_from_bytes(_standard_avatar)
 
         avatars = {}
         for size in AvatarSize:
