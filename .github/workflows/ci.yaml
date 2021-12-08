@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: ['main']
+  pull_request:
+    branches: ['main']
+
+jobs:
+  Lint:
+    name: Pre-Commit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.10"
+      - name: PreCommit
+        uses: pre-commit/action@v2.0.3
+        with:
+          extra_args: --all-files
+
+  Test:
+    name: PyTest
+    needs: [Lint]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.10"
+      - name: Install Dependencies
+        run: |
+          python3 -m venv venv
+          . venv/bin/activate
+          pip install -U pip setuptools
+          pip install -r requirements.txt -r requirements-test.txt
+          python -c "import sys; print(sys.version)"
+          pip list
+      - name: Test
+        run: |
+          . venv/bin/activate
+          pytest -sx -vvv --cov=app tests/
