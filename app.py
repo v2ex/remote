@@ -15,6 +15,7 @@ from enum import Enum, IntEnum, unique
 from functools import partial, wraps
 from typing import Any, List, Tuple
 
+import cairosvg
 import dns.resolver
 import magic
 import pillow_avif  # noqa
@@ -250,6 +251,7 @@ class SupportedImageTypes(Enum):
     IMAGE_JP2 = "image/jp2"
     IMAGE_VND_ADOBE_PHOTOSHOP = "image/vnd.adobe.photoshop"
     IMAGE_X_ICNS = "image/x-icns"
+    IMAGE_SVG = "image/svg+xml"
 
     @classmethod
     def all(cls):
@@ -413,8 +415,9 @@ def resize_avatar():
         return error(APIError(message="The uploaded file is not in a supported format"))
 
     try:
-        img: Image = Image.open(io.BytesIO(uploaded))
-        im_size = img.size
+        if mime != SupportedImageTypes.IMAGE_SVG.value:
+            img: Image = Image.open(io.BytesIO(uploaded))
+            im_size = img.size
     except:  # noqa
         return error(APIError(message="Unable to determine the size of the image"))
 
@@ -422,6 +425,22 @@ def resize_avatar():
     if mime == SupportedImageTypes.IMAGE_JPEG.value:
         img = ImageOps.exif_transpose(img)
         im_size = img.size
+
+    # We need to convert SVG to PNG
+    if mime == SupportedImageTypes.IMAGE_SVG.value:
+        try:
+            uploaded = cairosvg.svg2png(
+                bytestring=uploaded,
+                dpi=300,
+                output_width=512,
+                scale=1,
+                output_height=512,
+            )
+            img = Image.open(io.BytesIO(uploaded))
+            im_size = img.size
+        except Exception as e:  # noqa
+            capture_exception(e)
+            return error(APIError(message=f"Failed to convert SVG to PNG: {e}"))
 
     # Now we have a valid image, and we know its size and type.
     # Resize it to each size contained in `AvatarSize`.
