@@ -256,6 +256,44 @@ class SupportedImageTypes(Enum):
         return [i.value for i in cls]
 
 
+@dataclass
+class ImageInfo:
+    status: str = "ok"
+    success: bool = True
+    width: int = 0
+    height: int = 0
+    mime_type: str = ""
+    binary_size: int = 0
+
+
+@api_doc(APIDoc(usage="Upload an image file " "and show its info like size and type"))
+@app.route("/images/info", methods=["POST"])
+def image_info():
+    if not (_uploaded := request.files.get("file")):
+        return error(APIError(message="No file was uploaded"))
+    uploaded = _uploaded.read()
+    if not (mime := _get_mime(uploaded)):
+        return error(APIError(message="Unable to determine the file type"))
+    try:
+        if mime == SupportedImageTypes.IMAGE_SVG.value:
+            uploaded = cairosvg.svg2png(
+                bytestring=uploaded,
+                dpi=300,
+                scale=1,
+            )
+        img: Image = Image.open(io.BytesIO(uploaded))
+        im_size = img.size
+        width = im_size[0]
+        height = im_size[1]
+        binary_size = len(uploaded)
+    except:  # noqa
+        return error(APIError(message="Unable to determine the size of the image"))
+
+    return success(
+        ImageInfo(width=width, height=height, mime_type=mime, binary_size=binary_size)
+    )
+
+
 @api_doc(
     APIDoc(
         usage="Upload an image file in JPEG format "
