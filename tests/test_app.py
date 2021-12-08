@@ -66,3 +66,16 @@ def test_images_resize_avatar(client):
             assert f"avatar{size}".encode("utf-8") in response.data
             im = Image.open(io.BytesIO(base64.b64decode(o[f"avatar{size}"]["body"])))
             assert im.size == (size, size)
+
+
+def test_images_resize_avatar_1px(client):
+    data = {}
+    with open("tests/1px.png", "rb") as image_file:
+        data["file"] = (image_file, "1px.png")
+        response = client.post(
+            "/images/resize_avatar",
+            data=data,
+            follow_redirects=True,
+            content_type="multipart/form-data",
+        )
+        assert response.status_code == 200
