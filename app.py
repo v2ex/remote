@@ -275,8 +275,8 @@ class ImageInfo:
     binary_size: int = 0
 
 
-@api_doc(APIDoc(usage="Upload an image file " "and show its info like size and type"))
-@app.route("/images/info", methods=["POST"])
+@app.route("/images/info", methods=["GET", "POST"])
+@api_doc(APIDoc(usage="Upload an image file and show its info like size and type"))
 def image_info():
     if not (_uploaded := request.files.get("file")):
         return error(APIError(message="No file was uploaded"))
@@ -303,13 +303,13 @@ def image_info():
     )
 
 
+@app.route("/images/prepare_jpeg", methods=["GET", "POST"])
 @api_doc(
     APIDoc(
         usage="Upload an image file in JPEG format "
         "and have its GPS info stripped, and auto rotated"
     )
 )
-@app.route("/images/prepare_jpeg", methods=["GET", "POST"])
 def prepare_jpeg():
     # check uploaded file is valid or not
     if not (_uploaded := request.files.get("file")):
@@ -348,10 +348,10 @@ def prepare_jpeg():
     )
 
 
+@app.route("/images/fit/<int:box>", methods=["GET", "POST"])
 @api_doc(
     APIDoc(usage="Upload an image file and fit it into a box of the specified size")
 )
-@app.route("/images/fit/<int:box>", methods=["GET", "POST"])
 def fit(box: int):
     # check uploaded file is valid or not
     if not (_uploaded := request.files.get("file")):
@@ -413,6 +413,7 @@ class AvatarSize(IntEnum):
         ]
 
 
+@app.route("/images/resize_avatar", methods=["GET", "POST"])
 @api_doc(
     APIDoc(
         usage="Upload an image file in supported format, and resize for website "
@@ -420,7 +421,6 @@ class AvatarSize(IntEnum):
         f"Supported formats are: {', '.join(SupportedImageTypes.all())}"
     )
 )
-@app.route("/images/resize_avatar", methods=["GET", "POST"])
 def resize_avatar():
     # check uploaded file is valid or not
     if not (_uploaded := request.files.get("file")):
