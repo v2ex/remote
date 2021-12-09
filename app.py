@@ -297,7 +297,10 @@ def image_info():
         width = im_size[0]
         height = im_size[1]
         binary_size = len(uploaded)
-    except:  # noqa
+    except Exception as e:  # noqa
+        if config.sentry_environment != "production":
+            capture_exception(e)
+            return error(APIError(message=f"Unable to determine the size of the image: {e}"))
         return error(APIError(message="Unable to determine the size of the image"))
 
     return success(
