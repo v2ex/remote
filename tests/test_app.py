@@ -1,4 +1,7 @@
+import json
+import os
 import unittest
+from typing import Any, Dict
 
 from remote.app import AppENV, create_app
 
@@ -23,3 +26,19 @@ class TestApp(TestBase):
         self.assertIn("UID", self.app.config)
         self.assertIn("REGION", self.app.config)
         self.assertIn("COUNTRY", self.app.config)
+
+    def test_config_from_env(self):
+        test_env_configs: Dict[str, Any] = {
+            "UID": "test_uid",
+            "DEBUG": json.dumps(False),
+            "region": "test_region",
+        }
+        os.environ.update(test_env_configs)
+
+        app_2 = create_app(name="test2", env=AppENV.TEST)
+
+        for k, v in test_env_configs.items():
+            if k.isupper():
+                self.assertEqual(app_2.config[k], v)
+            else:
+                self.assertNotEqual(app_2.config[k.upper()], v)

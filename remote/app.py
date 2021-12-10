@@ -69,6 +69,15 @@ def load_config(flask_app: Flask, env: AppENV):
     else:
         flask_app.logger.warning("No config file found for env: %s", env.value)
 
+    # Try load each config on base from env.
+    for base_config in dir(base):
+        # Only load uppercase config in case.
+        if not base_config or not base_config.isupper():
+            continue
+        if base_config in os.environ:
+            flask_app.logger.info("Load config: %s from env.", base_config)
+            flask_app.config[base_config] = os.getenv(base_config)
+
 
 def setup_logger(flask_app: Flask):
     # Default log level: `DEBUG` if app is running on debug/test mode, `INFO` otherwise.
