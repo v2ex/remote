@@ -1,247 +1,25 @@
-#!/usr/bin/env python
-# coding=utf-8
-
 import base64
 import io
-import json
-import socket
 import time
-from collections import namedtuple
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import dataclass
 from enum import Enum, IntEnum, unique
-from functools import partial, wraps
-from typing import Any, List, Tuple
+from typing import Tuple
 
 import cairosvg
-import dns.resolver
 import magic
-import pillow_avif  # noqa
-import pyipip
-import sentry_sdk
-from dns.exception import DNSException
-from flask import Flask, Response, request
+import pillow_avif  # noqa: F401
+from flask import Blueprint, current_app, request
 from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 from resizeimage import resizeimage
 from sentry_sdk import capture_exception, capture_message
-from sentry_sdk.integrations.flask import FlaskIntegration
 
-import config
-from constants import JSON_MIME_TYPE
+from remote.wrapper import APIDoc, APIError, Methods, api_doc, error, success
+
+# Please keep the blueprint definition at the top uniformly.
+image_bp = Blueprint("image", __name__)
 
 register_heif_opener()
-
-sentry_sdk.init(
-    dsn=config.sentry_dsn,
-    integrations=[FlaskIntegration()],
-    environment=config.sentry_environment,
-    # Set traces_sample_rate to 1.0 to capture 100%
-    # of transactions for performance monitoring.
-    # We recommend adjusting this value in production.
-    traces_sample_rate=1.0,
-    # By default, the SDK will try to use the SENTRY_RELEASE
-    # environment variable, or infer a git commit
-    # SHA as release, however you may want to set
-    # something more human-readable.
-    # release="myapp@1.0.0",
-)
-
-app = Flask(__name__)
-
-started = time.time()
-
-ipdb = None
-
-
-def get_ipdb():
-    global ipdb
-    if not ipdb:
-        ipdb = pyipip.IPIPDatabase(config.ipip_db_path)
-    return ipdb
-
-
-@dataclass
-class APIDoc:
-    usage: str
-    status: str = "ok"
-    success: bool = True
-
-
-def api_doc(doc: APIDoc):
-    """To decorate the `get` method to return the description of the API."""
-
-    def wrapper(func):
-        @wraps(func)
-        def inner(*args, **kwargs):
-            if request.method == "GET":
-                return success(doc)
-
-            return func(*args, **kwargs)
-
-        return inner
-
-    return wrapper
-
-
-def _response(content: Any, status: int, mimetype: str = JSON_MIME_TYPE, **kwargs):
-    if is_dataclass(content):
-        content = json.dumps(asdict(content))
-    elif isinstance(content, dict):
-        content = json.dumps(content)
-    return Response(response=content, status=status, mimetype=mimetype, **kwargs)
-
-
-error = partial(_response, status=400)
-success = partial(_response, status=200)
-
-
-@dataclass
-class APIError:
-    message: str
-    status: str = "error"
-    success: bool = False
-
-
-@app.route("/")
-def home():
-    return success({})
-
-
-@dataclass
-class Pong:
-    status: str = "ok"
-    message: str = "pong"
-    uptime: float = field(default_factory=lambda: time.time() - started)
-    success: bool = True
-
-
-@app.route("/ping")
-def ping():
-    return success(Pong())
-
-
-@dataclass
-class WorkerInfo:
-    status: str = "ok"
-    uid: str = config.uid
-    uptime: float = field(default_factory=lambda: time.time() - started)
-    country: str = config.country
-    region: str = config.region
-    success: bool = True
-
-
-@app.route("/hello")
-def hello():
-    return success(WorkerInfo())
-
-
-IPRecord = namedtuple(
-    "IPRecord",
-    [
-        "status",
-        "success",
-        "country",
-        "province",
-        "city",
-        "org",
-        "isp",
-        "latitude",
-        "longitude",
-        "timezone",
-        "tz_diff",
-        "cn_division_code",
-        "calling_code",
-        "country_code",
-        "continent_code",
-    ],
-)
-
-
-@app.route("/ipip/<ip>")
-def ipip(ip):
-    if ":" in ip:
-        return error(APIError(message="IPv6 is not supported"))
-
-    try:
-        socket.inet_aton(ip)
-    except socket.error:
-        return error(APIError(message="Invalid IPv4 address provided"))
-
-    try:
-        _ipdb = get_ipdb()
-        ip_fields = _ipdb.lookup(ip).split("\t")
-        # Subtract the number of fields that we own assigned.
-        except_ip_meta_length = len(IPRecord._fields) - 2
-        ip_record = IPRecord("ok", True, *ip_fields[:except_ip_meta_length])
-        return success(ip_record._asdict())
-    except Exception as e:  # noqa
-        capture_exception(e)
-        return error(APIError(message="IP info not found"), status=404)
-
-
-@dataclass
-class UserIP:
-    ip: str
-    ipv4: str = None
-    ipv6: str = None
-    ipv4_available: bool = None
-    ipv6_available: bool = None
-    success: bool = True
-
-    def __post_init__(self):
-        self.ipv4 = self.extract_ip4(self.ip) if self.is_ipv4 else None
-        self.ipv6 = None if self.is_ipv4 else self.ip
-        self.ipv4_available = self.is_ipv4
-        self.ipv6_available = not self.is_ipv4
-
-    @property
-    def is_ipv4(self) -> bool:
-        return "." in self.ip
-
-    @staticmethod
-    def extract_ip4(raw_ip: str) -> str:
-        return raw_ip.replace("::ffff:", "")  # noqa
-
-
-@app.route("/ip")
-def ip():
-    _ip = request.remote_addr
-    if forwarded := request.headers.get("X-Forwarded-For"):
-        _ip = forwarded
-    return success(UserIP(ip=_ip))
-
-
-@dataclass
-class ResolveResp:
-    ttl: float
-    answers: List
-    nameservers: List[str]
-    status: str = None
-    success: bool = True
-
-    def __post_init__(self):
-        self.status = "ok" if len(self.answers) > 0 else "error"
-
-
-@app.route("/dns/resolve")
-def resolve():
-    if not (domain := request.args.get("domain")):
-        api_error = APIError(message='Required parameter "domain" is missing or empty')
-        return error(api_error)
-
-    local_resolver = dns.resolver.Resolver()
-    local_resolver.nameservers = config.nameservers
-    try:
-        dns_answer = local_resolver.resolve(domain)
-    except DNSException as e:
-        return error(APIError(message=f"Unable to resolve the specified domain: {e}"))
-
-    resolve_resp = ResolveResp(
-        nameservers=config.nameservers,
-        ttl=dns_answer.expiration - time.time(),
-        answers=[rrset.to_text() for rrset in dns_answer],
-    )
-    return success(resolve_resp)
 
 
 @unique
@@ -275,9 +53,9 @@ class ImageInfo:
     binary_size: int = 0
 
 
-@app.route("/images/info", methods=["GET", "POST"])
+@image_bp.route("/images/info", methods=Methods.common())
 @api_doc(APIDoc(usage="Upload an image file and show its info like size and type"))
-def image_info():
+def images_info():
     if not (_uploaded := request.files.get("file")):
         return error(APIError(message="No file was uploaded"))
     uploaded = _uploaded.read()
@@ -296,7 +74,7 @@ def image_info():
         width, height = img.size
         binary_size = len(uploaded)
     except Exception as e:  # noqa
-        if config.sentry_environment != "production":
+        if current_app.config["SENTRY_ENVIRONMENT"] != "production":
             capture_exception(e)
             return error(
                 APIError(message=f"Unable to determine the size of the image: {e}")
@@ -308,7 +86,7 @@ def image_info():
     )
 
 
-@app.route("/images/prepare_jpeg", methods=["GET", "POST"])
+@image_bp.route("/images/prepare_jpeg", methods=Methods.common())
 @api_doc(
     APIDoc(
         usage="Upload an image file in JPEG format "
@@ -353,7 +131,7 @@ def prepare_jpeg():
     )
 
 
-@app.route("/images/fit/<int:box>", methods=["GET", "POST"])
+@image_bp.route("/images/fit/<int:box>", methods=Methods.common())
 @api_doc(
     APIDoc(usage="Upload an image file and fit it into a box of the specified size")
 )
@@ -418,7 +196,7 @@ class AvatarSize(IntEnum):
         ]
 
 
-@app.route("/images/resize_avatar", methods=["GET", "POST"])
+@image_bp.route("/images/resize_avatar", methods=Methods.common())
 @api_doc(
     APIDoc(
         usage="Upload an image file in supported format, and resize for website "
