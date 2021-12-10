@@ -17,6 +17,7 @@ __pycache__
 */*/.cache*
 */*/.coverage*
 */*/htmlcov*
+coverage.svg
 
 tests
 .gitignore
