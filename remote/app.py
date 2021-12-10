@@ -2,14 +2,40 @@
 # -*- coding: utf-8 -*-
 
 import logging
-from typing import Union
+import os
+from enum import Enum, unique
+from pathlib import Path
+from typing import Optional
 
 import sentry_sdk
 from flask import Flask
 from sentry_sdk.integrations.flask import FlaskIntegration
 
 from remote.blueprints import image_bp, index_bp, network_bp
-from remote.utilities import load_module
+from remote.config import base
+
+# We use this environment variable to identify the env in which the project should run.
+#
+# When the project runs, we will load the basic configuration first,
+# and then load the corresponding configuration set according to this name.
+# It should be set to one of `AppENV`.
+APP_ENV_NAME = "APP_ENV"
+
+
+@unique
+class AppENV(Enum):
+    DEV = "DEV"
+    TEST = "TEST"
+    STAGING = "STAGING"
+    PROD = "PROD"
+
+    @classmethod
+    def detect(cls) -> Optional["AppENV"]:
+        _env = os.getenv(APP_ENV_NAME, "").upper()
+        try:
+            return cls[_env]
+        except KeyError:
+            return
 
 
 def init_sentry(dsn: str, env: str = None):
@@ -29,13 +55,19 @@ def init_sentry(dsn: str, env: str = None):
     )
 
 
-def load_config(flask_app: Flask, config: Union[object, str]):
-    # TODO !! load default config file first, then load others according to env.
-    try:
-        flask_app.config.from_object(config)
-    except Exception:  # noqa
-        module = load_module("config", "remote/config.example.py")
-        flask_app.config.from_object(module)
+def load_config(flask_app: Flask, env: AppENV):
+    # Load basic default config first.
+    flask_app.config.from_object(base)
+    if not env:
+        flask_app.logger.warning("No env specified, skip loading config.")
+        return
+
+    # Try to load the configuration according to the env.
+    _current_env = env.value.lower()
+    if Path(f"remote/config/{_current_env}.py").exists():
+        flask_app.config.from_object(f"remote.config.{_current_env}")
+    else:
+        flask_app.logger.warning("No config file found for env: %s", env.value)
 
 
 def setup_logger(flask_app: Flask):
@@ -62,15 +94,16 @@ def register_blueprint(flask_app: Flask):
         flask_app.register_blueprint(bp)
 
 
-def create_app(config: Union[object, str] = "remote.config", name: str = None) -> Flask:
+def create_app(name: str = None, env: AppENV = None) -> Flask:
     _app_name = name or __name__
+    current_env: Optional[AppENV] = env or AppENV.detect()
 
     _app = Flask(_app_name)
 
     # Load config from python module.
     # Make sure to load the configuration before other actions.
     # In case others from relying on the configuration.
-    load_config(_app, config)
+    load_config(_app, current_env)
 
     # Setup logger for whole app.
     setup_logger(_app)
@@ -85,10 +118,7 @@ def create_app(config: Union[object, str] = "remote.config", name: str = None) -
     # we use this(`Flask.logger`) instead of others(`logging`/`print`/...)
     # to print logs within the whole project.
     _app.logger.info(
-        "Flask app `%s` created! running on `%s` env, debug: `%s`",
-        _app.name,
-        _app.config["ENV"],
-        _app.config["DEBUG"],
+        "Flask app `%s` created! running on `%s` env.", _app.name, current_env
     )
 
     return _app

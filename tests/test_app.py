@@ -1,13 +1,11 @@
 import unittest
 
-from remote.app import create_app
-from remote.utilities import load_module
+from remote.app import AppENV, create_app
 
 
 class TestBase(unittest.TestCase):
     def setUp(self):
-        self.test_config = self.load_example_config()
-        self.app = create_app(config=self.test_config, name="test")
+        self.app = create_app(name="test", env=AppENV.TEST)
         self.client = self.app.test_client()
 
     def tearDown(self):
@@ -16,16 +14,6 @@ class TestBase(unittest.TestCase):
     @staticmethod
     def get_fixture_path(uri):
         return f"tests/fixtures/{uri}"
-
-    @staticmethod
-    def load_example_config() -> object:
-        # load module from example config file
-        module = load_module("config", "remote/config.example.py")
-
-        # set extra config for testing
-        module.TESTING = True
-        module.DEBUG = True
-        return module
 
 
 class TestApp(TestBase):
