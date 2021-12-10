@@ -56,20 +56,19 @@ def init_sentry(dsn: str, env: str = None):
 
 
 def load_config(flask_app: Flask, env: AppENV):
-    # Load basic default config first.
+    # 1. Load basic default config first.
     flask_app.config.from_object(base)
     if not env:
         flask_app.logger.warning("No env specified, skip loading config.")
-        return
 
-    # Try to load the configuration according to the env.
-    _current_env = env.value.lower()
-    if Path(f"remote/config/{_current_env}.py").exists():
-        flask_app.config.from_object(f"remote.config.{_current_env}")
-    else:
-        flask_app.logger.warning("No config file found for env: %s", env.value)
+    # 2. Try to load the configuration according to the env.
+    if _current_env := env and env.value.lower():
+        if Path(f"remote/config/{_current_env}.py").exists():
+            flask_app.config.from_object(f"remote.config.{_current_env}")
+        else:
+            flask_app.logger.warning("No config file found for env: %s", env.value)
 
-    # Try load each config on base from env.
+    # 3. Try load each config on base from env.
     for base_config in dir(base):
         # Only load uppercase config in case.
         if not base_config or not base_config.isupper():
