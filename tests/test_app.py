@@ -1,7 +1,7 @@
-import importlib.util
 import unittest
 
 from remote.app import create_app
+from remote.utilities import load_module
 
 
 class TestBase(unittest.TestCase):
@@ -19,12 +19,8 @@ class TestBase(unittest.TestCase):
 
     @staticmethod
     def load_example_config() -> object:
-        # load module from file
-        spec = importlib.util.spec_from_file_location(
-            "config", "remote/config.example.py"
-        )
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        # load module from example config file
+        module = load_module("config", "remote/config.example.py")
 
         # set extra config for testing
         module.TESTING = True

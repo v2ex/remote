@@ -9,6 +9,7 @@ from flask import Flask
 from sentry_sdk.integrations.flask import FlaskIntegration
 
 from remote.blueprints import image_bp, index_bp, network_bp
+from remote.utilities import load_module
 
 
 def init_sentry(dsn: str, env: str = None):
@@ -29,7 +30,12 @@ def init_sentry(dsn: str, env: str = None):
 
 
 def load_config(flask_app: Flask, config: Union[object, str]):
-    flask_app.config.from_object(config)
+    # TODO !! load default config file first, then load others according to env.
+    try:
+        flask_app.config.from_object(config)
+    except Exception:  # noqa
+        module = load_module("config", "remote/config.example.py")
+        flask_app.config.from_object(module)
 
 
 def setup_logger(flask_app: Flask):
