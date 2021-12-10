@@ -18,7 +18,6 @@ RUN pip3 install --upgrade pip \
 EXPOSE 5000
 
 COPY . /app
-COPY ./dev/ipip.datx /opt/data/ipip.datx
 
 WORKDIR /app
 
