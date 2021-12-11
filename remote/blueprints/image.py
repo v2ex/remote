@@ -51,6 +51,7 @@ class ImageInfo:
     height: int = 0
     mime_type: str = ""
     binary_size: int = 0
+    frames: int = 1
 
 
 @image_bp.route("/images/info", methods=Methods.common())
@@ -81,8 +82,19 @@ def images_info():
             )
         return error(APIError(message="Unable to determine the size of the image"))
 
+    try:
+        frames = img.n_frames
+    except Exception as e:  # noqa
+        capture_exception(e)
+
     return success(
-        ImageInfo(width=width, height=height, mime_type=mime, binary_size=binary_size)
+        ImageInfo(
+            width=width,
+            height=height,
+            mime_type=mime,
+            binary_size=binary_size,
+            frames=frames,
+        )
     )
 
 

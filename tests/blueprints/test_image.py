@@ -18,6 +18,10 @@ class TestImage(TestBase):
         return self.get_fixture_path("hello.png")
 
     @property
+    def test_webp(self):
+        return self.get_fixture_path("test.webp")
+
+    @property
     def python_svg(self):
         return self.get_fixture_path("python.svg")
 
@@ -38,6 +42,17 @@ class TestImage(TestBase):
         resp = response.json
 
         self.assertIn(resp["mime_type"], "image/png")
+
+    def test_images_info_webp_frames(self):
+        with open(self.test_webp, "rb") as image_file:
+            data = {"file": (image_file, "test.webp")}
+            response = self.client.post("/images/info", data=data)
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        self.assertIn(resp["mime_type"], "image/webp")
+        self.assertEqual(resp["frames"], Image.open(self.test_webp).n_frames)
 
     def test_images_info_error_1(self):
         response = self.client.post("/images/info")
