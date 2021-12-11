@@ -34,3 +34,4 @@ pytest.ini
 coverage.svg
 setup.py
 setup.cfg
+requirements-test.txt
