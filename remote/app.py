@@ -67,9 +67,9 @@ def load_config(flask_app: Flask, env: AppENV):
         flask_app.logger.warning("No env specified, skip loading config from file.")
 
     if env:
-        config_file = f"remote/config/{env.value.lower()}.py"
-        if Path(config_file).exists():
-            flask_app.config.from_pyfile(config_file)
+        config_file = Path(f"remote/config/{env.value.lower()}.py")
+        if config_file.exists():
+            flask_app.config.from_pyfile(config_file.absolute())
         else:
             flask_app.logger.warning("No config file found for env: %s", env.value)
 

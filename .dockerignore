@@ -22,7 +22,6 @@ coverage.svg
 tests
 .gitignore
 Dockerfile*
-requirements-test.txt
 .git
 .dockerignore
 .pre-commit-config.yaml
@@ -32,4 +31,6 @@ README.md
 .bandit.yaml
 .flake8
 pytest.ini
-config.example.py
+coverage.svg
+setup.py
+setup.cfg
