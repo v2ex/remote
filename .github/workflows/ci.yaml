@@ -34,25 +34,19 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: "3.10"
-      - name: Install Dependencies
+      - name: Install Dependencies And Test
+        shell: bash
         run: |
-          python3 -m venv venv
-          . venv/bin/activate
-          pip install -U pip setuptools
-          pip install -r requirements.txt -r requirements-test.txt
-          python -c "import sys; print(sys.version)"
-          pip list
-      - name: Test
-        run: |
-          . venv/bin/activate
-          pytest -sx -vvv --cov=. tests/
+          chmod +x ./tests/ci_test.sh
+          ./tests/ci_test.sh
 
-  Docker-Build-And-Push:
-    name: Docker-Build-And-Push
+  Docker-Build-Test-Push:
+    name: Docker-Build-Test-Push
     needs: [Test]
     runs-on: ubuntu-latest
     env:
       IMAGE_NAME: remote
+      TEST_TAG: remote:test
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -81,7 +75,27 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_PASSWORD }}
 
-      - name: Build And Push
+      - name: Build and export to Docker
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          load: true
+          tags: ${{ env.TEST_TAG }}
+          push: false
+
+      # Since the image we build only contains the minimum data needed for running,
+      # so we need to actively mount the test data to inside.
+      - name: Test In Container
+        run: |
+          echo "Start running the test script inside the container..."
+          docker run --rm \
+          --mount type=bind,source=${GITHUB_WORKSPACE}/tests,target=/app/tests \
+          --mount type=bind,source=${GITHUB_WORKSPACE}/requirements-test.txt,target=/app/requirements-test.txt \
+          ${{ env.TEST_TAG }} \
+          bash -c "chmod +x /app/tests/ci_test.sh && /app/tests/ci_test.sh"
+          echo "End running the test script inside the container with : $?"
+
+      - name: Push Image
         uses: docker/build-push-action@v2
         env:
           CR_URL: ${{ github.repository_owner }}/${{ env.IMAGE_NAME }}

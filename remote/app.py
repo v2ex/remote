@@ -31,11 +31,8 @@ class AppENV(Enum):
 
     @classmethod
     def detect(cls) -> Optional["AppENV"]:
-        _env = os.getenv(APP_ENV_NAME, "").upper()
-        try:
-            return cls[_env]
-        except KeyError:
-            return
+        _env_name = os.getenv(APP_ENV_NAME, "").upper()
+        return cls[_env_name] if _env_name in cls.__members__ else None
 
 
 def init_sentry(dsn: str, env: str = None):
@@ -56,21 +53,28 @@ def init_sentry(dsn: str, env: str = None):
 
 
 def load_config(flask_app: Flask, env: AppENV):
-    # 1. Load basic default config first.
+    """
+    We use the flask config module to load and manages the config of whole project.
+
+    And we follow the following rules to load the configuration of the whole project:
+    1. Load basic default config first, which base is complete config set,
+       please make sure every config used in the project is exists in there.
+    2. Try to load the configuration according to the env you specified.
+    3. Try to find each config in the base from the env var.
+    """
     flask_app.config.from_object(base)
     if not env:
-        flask_app.logger.warning("No env specified, skip loading config.")
+        flask_app.logger.warning("No env specified, skip loading config from file.")
 
-    # 2. Try to load the configuration according to the env.
-    if _current_env := env and env.value.lower():
-        if Path(f"remote/config/{_current_env}.py").exists():
-            flask_app.config.from_object(f"remote.config.{_current_env}")
+    if env:
+        config_file = Path(f"remote/config/{env.value.lower()}.py")
+        if config_file.exists():
+            flask_app.config.from_pyfile(config_file.absolute())
         else:
             flask_app.logger.warning("No config file found for env: %s", env.value)
 
-    # 3. Try load each config on base from env.
     for base_config in dir(base):
-        # Only load uppercase config in case.
+        # Load only uppercase configs like flake config module's behavior.
         if not base_config or not base_config.isupper():
             continue
         if base_config in os.environ:
@@ -79,14 +83,22 @@ def load_config(flask_app: Flask, env: AppENV):
 
 
 def setup_logger(flask_app: Flask):
-    # Default log level: `DEBUG` if app is running on debug/test mode, `INFO` otherwise.
-    # If `LOG_LEVEL` is actively set in the configuration, the set value shall prevail.
+    """
+    Set up the logger for the whole project.
+
+    Default log level: `DEBUG` if app is running on debug/test mode, `INFO` otherwise,
+    If `LOG_LEVEL` is actively set in the configuration, the set value shall prevail.
+
+    Since flask has built-in logging module(based on python native lib `logging`),
+    we use this(`Flask.logger`) instead of others(`logging`/`print`/...)
+    to print logs within the whole project.
+    """
     _loger = logging.getLogger(flask_app.name)
 
     level = logging.INFO
     if flask_app.debug or flask_app.testing:
         level = logging.DEBUG
-    level = flask_app.config.get("LOG_LEVEL", level)
+    level = flask_app.config.get("LOG_LEVEL".upper(), level)
     _loger.setLevel(level)
     # TODO set logger format
 
@@ -122,9 +134,6 @@ def create_app(name: str = None, env: AppENV = None) -> Flask:
     # Init sentry.
     init_sentry(_app.config["SENTRY_DSN"], _app.config["SENTRY_ENVIRONMENT"])
 
-    # Since flask has built-in logging module(based on python native lib `logging`),
-    # we use this(`Flask.logger`) instead of others(`logging`/`print`/...)
-    # to print logs within the whole project.
     _app.logger.info(
         "Flask app `%s` created! running on `%s` env.", _app.name, current_env
     )

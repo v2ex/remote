@@ -31,7 +31,7 @@ def api_doc(doc: APIDoc):
     def wrapper(func):
         @wraps(func)
         def inner(*args, **kwargs):
-            if request.method == "GET":
+            if request.method == Methods.GET.value:
                 return success(doc)
 
             return func(*args, **kwargs)

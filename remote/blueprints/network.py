@@ -77,6 +77,7 @@ class UserIP:
     success: bool = True
 
     def __post_init__(self):
+        """We will automatically calculate the remaining fields at this stage."""
         self.ipv4 = self.extract_ip4(self.ip) if self.is_ipv4 else None
         self.ipv6 = None if self.is_ipv4 else self.ip
         self.ipv4_available = self.is_ipv4
@@ -108,6 +109,7 @@ class ResolveResp:
     success: bool = True
 
     def __post_init__(self):
+        """We will automatically calculate the `statue` field at this stage."""
         self.status = "ok" if len(self.answers) > 0 else "error"
 
 

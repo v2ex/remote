@@ -2,5 +2,5 @@
 max-line-length = 88
 # Enable flake8-logging-format
 enable-extensions = G
-ignore = D10, PT009
+ignore = D100, D101, D102, D103, D104, PT009
 ban-relative-import = true
