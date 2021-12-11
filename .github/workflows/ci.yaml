@@ -37,11 +37,11 @@ jobs:
       - name: Install Dependencies And Test
         shell: bash
         run: |
-          chmod +x ./tests/test.sh
-          ./tests/test.sh
+          chmod +x ./tests/ci_test.sh
+          ./tests/ci_test.sh
 
-  Docker-Build-And-Push:
-    name: Docker-Build-And-Push
+  Docker-Build-Test-Push:
+    name: Docker-Build-Test-Push
     needs: [Test]
     runs-on: ubuntu-latest
     env:
@@ -83,17 +83,19 @@ jobs:
           tags: ${{ env.TEST_TAG }}
           push: false
 
-      - name: Image In Image
+      # Since the image we build only contains the minimum data needed for running,
+      # so we need to actively mount the test data to inside.
+      - name: Test In Container
         run: |
-          echo "HOME ${HOME}"
-          echo "GITHUB_WORKSPACE: ${GITHUB_WORKSPACE}"
+          echo "Start running the test script inside the container..."
           docker run --rm \
-          --mount type=bind, source=${GITHUB_WORKSPACE}/tests, target=/app/tests \
-          --mount type=bind, source=${GITHUB_WORKSPACE}/requirements-test.txt, target=/app/requirements-test.txt \
+          --mount type=bind,source=${GITHUB_WORKSPACE}/tests,target=/app/tests \
+          --mount type=bind,source=${GITHUB_WORKSPACE}/requirements-test.txt,target=/app/requirements-test.txt \
           ${{ env.TEST_TAG }} \
-          bash -c "chmod +x /app/tests/test.sh && /app/tests/test.sh"
+          bash -c "chmod +x /app/tests/ci_test.sh && /app/tests/ci_test.sh"
+          echo "End running the test script inside the container with : $?"
 
-      - name: Build And Push
+      - name: Push Image
         uses: docker/build-push-action@v2
         env:
           CR_URL: ${{ github.repository_owner }}/${{ env.IMAGE_NAME }}
