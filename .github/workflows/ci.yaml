@@ -34,18 +34,11 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: "3.10"
-      - name: Install Dependencies
+      - name: Install Dependencies And Test
+        shell: bash
         run: |
-          python3 -m venv venv
-          . venv/bin/activate
-          pip install -U pip setuptools
-          pip install -r requirements.txt -r requirements-test.txt
-          python -c "import sys; print(sys.version)"
-          pip list
-      - name: Test
-        run: |
-          . venv/bin/activate
-          pytest -sx -vvv --cov=. tests/
+          chmod +x ./tests/test.sh
+          ./tests/test.sh
 
   Docker-Build-And-Push:
     name: Docker-Build-And-Push
@@ -53,6 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       IMAGE_NAME: remote
+      TEST_TAG: remote:test
     steps:
       - name: Checkout
         uses: actions/checkout@v2
@@ -80,6 +74,24 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+      - name: Build and export to Docker
+        uses: docker/build-push-action@v2
+        with:
+          context: .
+          load: true
+          tags: ${{ env.TEST_TAG }}
+          push: false
+
+      - name: Image In Image
+        run: |
+          echo "HOME ${HOME}"
+          echo "GITHUB_WORKSPACE: ${GITHUB_WORKSPACE}"
+          docker run --rm \
+          --mount type=bind, source=${GITHUB_WORKSPACE}/tests, target=/app/tests \
+          --mount type=bind, source=${GITHUB_WORKSPACE}/requirements-test.txt, target=/app/requirements-test.txt \
+          ${{ env.TEST_TAG }} \
+          bash -c "chmod +x /app/tests/test.sh && /app/tests/test.sh"
 
       - name: Build And Push
         uses: docker/build-push-action@v2
