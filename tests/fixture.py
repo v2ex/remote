@@ -34,3 +34,7 @@ class TestFixture:
     @property
     def px200_jpg(self):
         return self.get_fixture_path("200px.jpg")
+
+    @property
+    def sunny_icns(self):
+        return self.get_fixture_path("sunny.icns")

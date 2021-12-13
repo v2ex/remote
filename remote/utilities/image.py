@@ -56,7 +56,8 @@ class ImageMIME(Enum):
     AVIF = "image/avif", "AVIF"
     HEIF = "image/heif", "HEIF"
     HEIC = "image/heic", "HEIC"
-    X_ICNS = "image/x-icns", "X_ICNS"
+    # [Apple Icon Image format](https://en.wikipedia.org/wiki/Apple_Icon_Image_format)
+    X_ICNS = "image/x-icns", "ICNS"
     SVG = "image/svg+xml", "PNG"
     # This format is similar to `ICO` above.
     # It is an **official** icon format(registered in IANA).
@@ -170,7 +171,12 @@ class ImageHandle:
             return
 
         # Some types need preprocessing are convenient for subsequent processing.
-        ico_mimes = [ImageMIME.ICO.value, ImageMIME.ICO_UNOFFICIAL.value]
+        ico_mimes = [
+            ImageMIME.ICO.value,
+            ImageMIME.ICO_UNOFFICIAL.value,
+            ImageMIME.ICNS,
+            ImageMIME.X_ICNS,
+        ]
         if self.guess_mime in ico_mimes:
             max_size = max(AvatarSize)
             self.image = _image.resize((max_size, max_size), Image.NEAREST)

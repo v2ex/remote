@@ -15,6 +15,18 @@ class TestImage(TestBase, TestFixture):
         self.assertEqual(response.status_code, 200)
         self.assertIn("usage", response.json)
 
+    def test_images_info_icns(self):
+        with open(self.sunny_icns, "rb") as image_file:
+            data = {"file": (image_file, "sunny.icns")}
+            response = self.client.post("/images/info", data=data)
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        self.assertIn(resp["mime_type"], "image/x-icns")
+        self.assertEqual(resp["binary_size"], len(open(self.sunny_icns, "rb").read()))
+        self.assertEqual(resp["frames"], 1)
+
     def test_images_info_png(self):
         with open(self.hello_png, "rb") as image_file:
             data = {"file": (image_file, "hello.png")}
@@ -191,6 +203,26 @@ class TestImage(TestBase, TestFixture):
         output_img = Image.open(io.BytesIO(base64.b64decode(resp["output"])))
         self.assertEqual(output_img.size, _target_size)
 
+    def test_fit_icns_36(self):
+        target_size = 36
+        original_size = Image.open(self.sunny_icns).size
+        lw_aspect = original_size[0] / original_size[1]
+        if lw_aspect > 1:
+            _target_size = (target_size, int(target_size / lw_aspect))
+        else:
+            _target_size = (int(target_size * lw_aspect), target_size)
+
+        with open(self.sunny_icns, "rb") as image_file:
+            data = {"file": (image_file, "sunny.icns")}
+            response = self.client.post(f"/images/fit/{target_size}", data=data)
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        self.assertIn("output", resp)
+        output_img = Image.open(io.BytesIO(base64.b64decode(resp["output"])))
+        self.assertEqual(output_img.size, _target_size)
+
     def test_fit_oversize(self):
         original_size = Image.open(self.hello_jpeg).size
         target_size = max(original_size) + 100
@@ -228,6 +260,22 @@ class TestImage(TestBase, TestFixture):
         self.assertEqual(response.status_code, 200)
         self.assertIn("usage", response.json)
 
+    def test_resize_avatar_icns(self):
+        with open(self.sunny_icns, "rb") as image_file:
+            data = {"file": (image_file, "sunny.icns")}
+            response = self.client.post("/images/resize_avatar", data=data)
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        for size in AvatarSize:
+            if size.is_mandatory:
+                self.assertIn(f"avatar{size}", resp)
+                _body = resp[f"avatar{size}"]["body"]
+                output_img = Image.open(io.BytesIO(base64.b64decode(_body)))
+                self.assertEqual(output_img.size, (size, size))
+                self.assertEqual(output_img.format, "PNG")
+
     def test_resize_avatar_png(self):
         with open(self.hello_png, "rb") as image_file:
             data = {"file": (image_file, "hello.png")}
@@ -241,6 +289,7 @@ class TestImage(TestBase, TestFixture):
             _body = resp[f"avatar{size}"]["body"]
             output_img = Image.open(io.BytesIO(base64.b64decode(_body)))
             self.assertEqual(output_img.size, (size, size))
+            self.assertEqual(output_img.format, "PNG")
 
     def test_resize_avatar_svg(self):
         with open(self.python_svg, "rb") as image_file:
