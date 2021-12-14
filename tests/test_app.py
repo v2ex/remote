@@ -14,10 +14,6 @@ class TestBase(unittest.TestCase):
     def tearDown(self):
         ...
 
-    @staticmethod
-    def get_fixture_path(uri):
-        return f"tests/fixtures/{uri}"
-
 
 class TestApp(TestBase):
     def test_config(self):
