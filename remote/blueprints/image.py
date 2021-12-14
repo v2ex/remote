@@ -78,7 +78,7 @@ def prepare_jpeg():
     # 1. Remove GPS
     # 2. Auto Rotate
     try:
-        handler.auto_rotated().remove_exif(ExifTag.GPSInfo)
+        handler.auto_rotated().remove_exif(ExifTag.GPS_INFO)
     except Exception as e:  # noqa
         capture_exception(e)
         return error(APIError(message=f"Failed to prepare image: {e}"), status=500)

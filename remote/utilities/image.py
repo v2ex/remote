@@ -83,10 +83,10 @@ class ImageMIME(Enum):
 class ExifTag(Enum):
     """View more tags from `PIL.ExifTags.TAGS`."""
 
-    Orientation = 0x0112
+    ORIENTATION = 0x0112
     # see more about magic number `0x8825` from
     # [Pillow](https://pillow.readthedocs.io/en/stable/releasenotes/8.2.0.html#image-getexif-exif-and-gps-ifd)
-    GPSInfo = 0x8825
+    GPS_INFO = 0x8825
     ...
 
 
@@ -172,8 +172,8 @@ class ImageHandle:
 
         # Some types need preprocessing are convenient for subsequent processing.
         ico_mimes = [
-            ImageMIME.ICO.value,
-            ImageMIME.ICO_UNOFFICIAL.value,
+            ImageMIME.ICO,
+            ImageMIME.ICO_UNOFFICIAL,
             ImageMIME.ICNS,
             ImageMIME.X_ICNS,
         ]
