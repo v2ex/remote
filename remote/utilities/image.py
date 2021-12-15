@@ -6,7 +6,7 @@ from typing import Optional
 import cairosvg
 import magic
 from flask import current_app
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, UnidentifiedImageError
 from pillow_heif import register_heif_opener
 from sentry_sdk import capture_exception
 
@@ -76,8 +76,12 @@ class ImageMIME(Enum):
         return [i.value[0] for i in cls]
 
     @classmethod
-    def get_by_value(cls, value: str) -> "ImageMIME":
+    def get_by_magic_format(cls, value: str) -> "ImageMIME":
         return next((i for i in cls if i.value[0] == value), None)
+
+    @classmethod
+    def get_by_pil_format(cls, value: str) -> "ImageMIME":
+        return next((i for i in cls if i.value[1] == value), None)
 
 
 class ExifTag(Enum):
@@ -199,18 +203,30 @@ class ImageHandle:
 
     @staticmethod
     def guess_mime_from_bytes(buffer: bytes) -> ImageMIME | None:
-        """Try to guess the mime type from bytes content."""
+        """Try to guess the mime type from bytes content by `magic` or `PIL`."""
+        magic_format = pil_format = None
         try:
-            raw_mime = magic.from_buffer(buffer, mime=True)
-            # _mime eg: "image/jpeg"
+            magic_format = magic.from_buffer(buffer, mime=True)
+            # magic_format eg: "image/jpeg"
         except magic.MagicException as e:
-            current_app.logger.warning("Unable to guess mime type: %s", e.message)
-            return
+            current_app.logger.warning("Magic unable to guess mime type: %s", e.message)
 
-        if not (mime := ImageMIME.get_by_value(raw_mime.lower())):
-            current_app.logger.warning("Unsupported mime type: %s", raw_mime)
-            return
-        return mime
+        if mime := ImageMIME.get_by_magic_format(magic_format.lower()):
+            return mime
+
+        try:
+            _image = Image.open(io.BytesIO(buffer))
+            pil_format = _image.format
+            # pil_format eg: "AVIF"
+        except (UnidentifiedImageError, AttributeError) as e:
+            current_app.logger.warning("Magic unable to guess mime type: %s", e.message)
+
+        if mime := ImageMIME.get_by_pil_format(pil_format.upper()):
+            return mime
+
+        current_app.logger.warning(
+            "Unsupported mime type, magic: %s, PIL :%s", magic_format, pil_format
+        )
 
     @staticmethod
     def load_from_bytes(bytes_content: bytes) -> Image:
