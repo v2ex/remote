@@ -244,10 +244,13 @@ class ImageHandle:
             exif = self.image.getexif() or {}
             for tag in tags:
                 exif.pop(tag.value, None)
+        return self
 
+    # See also: https://stackoverflow.com/questions/33533148/
     def auto_rotate(self):
         """Auto-rotate the image according to its EXIF data."""
         if not self.image:
             current_app.logger.warning("No image found, skip auto rotate.")
             return
         self.image = ImageOps.exif_transpose(self.image)
+        return self
