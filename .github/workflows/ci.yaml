@@ -26,6 +26,9 @@ jobs:
     name: PyTest
     needs: [Lint]
     runs-on: ubuntu-latest
+    env:
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      SENTRY_ENVIRONMENT: ${{ secrets.SENTRY_ENVIRONMENT }}
 
     steps:
       - name: Checkout
