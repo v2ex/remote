@@ -233,9 +233,7 @@ def _need_rescale(img: Image.Image, target_size: int) -> bool:
     return img.size[0] >= target_size and img.size[1] >= target_size
 
 
-def _rescale_single_frame_avatar(
-    image: Image.Image, size: AvatarSize
-) -> bytes | None:
+def _rescale_single_frame_avatar(image: Image.Image, size: AvatarSize) -> bytes | None:
     try:
         with io.BytesIO() as io_obj:
             rescaled = resizeimage.resize_cover(image, (size, size), validate=False)
