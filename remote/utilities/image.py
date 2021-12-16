@@ -120,13 +120,14 @@ class ImageHandle:
     def __init__(self, content: bytes):
         """Image handle."""
         self._raw_content: bytes = content
-        self.guess_mime: Optional[ImageMIME] = None
-        self.image: Image = None
+        self.mime: Optional[ImageMIME] = None
+        self.image: Image.Image = None
+        self.animated: bool = False
         self.preprocess()
 
     @property
     def is_valid(self) -> bool:
-        return self.guess_mime is not None and self.image is not None
+        return self.mime is not None and self.image is not None
 
     @property
     def raw_size(self) -> int:
@@ -145,63 +146,57 @@ class ImageHandle:
             return base64.b64encode(buffered.getvalue()).decode("utf-8")
 
     def preprocess(self):
-        """
-        Convert unusual/difficultly formats to common formats.
-
-        We need to convert some special mimes into formats supported by PIL,
-        so that we can handle it conveniently later.
-        """
-        # You can't do anything else without MIME.
-        self.guess_mime = self.guess_mime_from_bytes(self._raw_content)
-        if not self.guess_mime:
-            current_app.logger.info(
-                "No MIME type found, skip this preparation process."
-            )
+        """Convert rare image formats into formats supported by PIL."""
+        self.mime = self.guess_mime_from_bytes(self._raw_content)
+        if not self.mime:
+            current_app.logger.info("No MIME type found, skip ths preparation process.")
             return
 
-        # Some types are not supported by PIL,
-        # so we need to unified convert then give them to PIL.
-        _raw_content = self._raw_content
-        if self.guess_mime == ImageMIME.SVG:
+        # PIL only support rasterized image formats, convert SVG to PNG first.
+        raw_content = self._raw_content
+        if self.mime == ImageMIME.SVG:
             try:
-                _raw_content = cairosvg.svg2png(self._raw_content, dpi=300)
+                raw_content = cairosvg.svg2png(self._raw_content, dpi=300)
             except Exception as e:  # noqa
-                if current_app.config["SENTRY_ENVIRONMENT"] != "production":
-                    capture_exception(e)
+                capture_exception(e)
 
-        # Try to use PIL to load the bytes content to PIL.Image.
         try:
-            _image: Image = self.load_from_bytes(_raw_content)
+            image = self.load_from_bytes(raw_content)
         except Exception:  # noqa
             current_app.logger.error("Failed to load image from bytes.")
             return
 
-        # Some types need preprocessing are convenient for subsequent processing.
+        # Preprocess rare image types.
         ico_mimes = [
             ImageMIME.ICO,
             ImageMIME.ICO_UNOFFICIAL,
             ImageMIME.ICNS,
             ImageMIME.X_ICNS,
         ]
-        if self.guess_mime in ico_mimes:
+        if self.mime in ico_mimes:
+            # Integer scaling for ICO icons.
             max_size = max(AvatarSize)
-            self.image = _image.resize((max_size, max_size), Image.NEAREST)
+            self.image = image.resize((max_size, max_size), Image.NEAREST)
             self.image.format = ImageMIME.PNG.pil_format
-        elif self.guess_mime == ImageMIME.SVG:
-            short_size, long_size = min(_image.size), max(_image.size)
-            background = Image.new("RGBA", (long_size, long_size), (0, 0, 0, 0))
-
-            # We need to convert SVG to PNG
-            is_horizontal = _image.size[0] > _image.size[1]
-            _size = int((long_size - short_size) / 2)
-            box_size = (0, _size) if is_horizontal else (_size, 0)
-            background.paste(_image, box_size)
+        elif self.mime == ImageMIME.SVG:
+            # Letterbox rasterized SVG in a square.
+            w, h = image.size
+            background = Image.new("RGBA", (max(w, h), max(w, h)), (0, 0, 0, 0))
+            is_horizontal = w > h
+            letterbox_length = int(abs(w - h) / 2)
+            image_top_left = (
+                (0, letterbox_length) if is_horizontal else (letterbox_length, 0)
+            )
+            background.paste(image, image_top_left)
 
             self.image = background
-            self.image.format = self.guess_mime.pil_format
+            self.image.format = self.mime.pil_format
         else:
-            self.image = _image
-            self.image.format = self.guess_mime.pil_format
+            self.image = image
+            self.image.format = self.mime.pil_format
+
+        if getattr(self.image, "is_animated", False):
+            self.animated = True
 
     @staticmethod
     def guess_mime_from_bytes(buffer: bytes) -> ImageMIME | None:
@@ -231,14 +226,12 @@ class ImageHandle:
         )
 
     @staticmethod
-    def load_from_bytes(bytes_content: bytes) -> Image:
+    def load_from_bytes(bytes_content: bytes) -> Image.Image:
         """Convert bytes content to `PIL.Image`."""
         return Image.open(io.BytesIO(bytes_content))
 
-    def remove_exif(
-        self, *tags: ExifTag, full: bool = False
-    ) -> Optional["ImageHandle"]:
-        """Remove GPS data from the image EXIF and return a new image."""
+    def remove_exif(self, *tags: ExifTag, full: bool = False):
+        """Remove GPS data from the image EXIF."""
         if not self.image:
             current_app.logger.warning("No image found, skip EXIF removing.")
             return
@@ -251,12 +244,10 @@ class ImageHandle:
             exif = self.image.getexif() or {}
             for tag in tags:
                 exif.pop(tag.value, None)
-        return self
 
-    def auto_rotated(self) -> Optional["ImageHandle"]:
-        """Auto-rotate the image according to its EXIF data and return a new image."""
+    def auto_rotate(self):
+        """Auto-rotate the image according to its EXIF data."""
         if not self.image:
             current_app.logger.warning("No image found, skip auto rotate.")
             return
         self.image = ImageOps.exif_transpose(self.image)
-        return self

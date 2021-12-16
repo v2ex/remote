@@ -93,13 +93,13 @@ def setup_logger(flask_app: Flask):
     we use this(`Flask.logger`) instead of others(`logging`/`print`/...)
     to print logs within the whole project.
     """
-    _loger = logging.getLogger(flask_app.name)
+    _logger = logging.getLogger(flask_app.name)
 
     level = logging.INFO
     if flask_app.debug or flask_app.testing:
         level = logging.DEBUG
     level = flask_app.config.get("LOG_LEVEL".upper(), level)
-    _loger.setLevel(level)
+    _logger.setLevel(level)
     # TODO set logger format
 
 
