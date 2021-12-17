@@ -22,16 +22,6 @@ jobs:
         with:
           extra_args: --all-files
 
-  SpellCheck:
-    name: Spell Check with codespell
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v2
-    - uses: codespell-project/actions-codespell@master
-      with:
-        exclude_file: tests/fixtures/python.svg
-
   Test:
     name: PyTest
     needs: [Lint]
