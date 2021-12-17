@@ -112,7 +112,6 @@ def fit(box: int):
     # Now we have a valid image.
     # Fit it into a box of the specified size.
     _image: Image = handler.image
-    _format = _image.format and _image.format.lower()
 
     start = time.time()
     _resized_content = _rescale_aspect_ratio(_image, box)
@@ -122,7 +121,7 @@ def fit(box: int):
     end = time.time()
 
     if request.args.get("simple"):
-        return success(resized_content, mimetype=f"image/{_format}")
+        return success(resized_content, mimetype=handler.guess_mime.mime)
 
     return success(
         {
