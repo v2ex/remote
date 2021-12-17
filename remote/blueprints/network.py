@@ -109,7 +109,7 @@ class ResolveResp:
     success: bool = True
 
     def __post_init__(self):
-        """We will automatically calculate the `statue` field at this stage."""
+        """We will automatically calculate the `status` field at this stage."""
         self.status = "ok" if len(self.answers) > 0 else "error"
 
 

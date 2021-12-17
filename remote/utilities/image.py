@@ -154,7 +154,9 @@ class ImageHandle:
         # You can't do anything else without MIME.
         self.guess_mime = self.guess_mime_from_bytes(self._raw_content)
         if not self.guess_mime:
-            current_app.logger.info("No MIME type found, skip ths preparation process.")
+            current_app.logger.info(
+                "No MIME type found, skip this preparation process."
+            )
             return
 
         # Some types are not supported by PIL,
