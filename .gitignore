@@ -6,7 +6,6 @@
 .idea
 .python-version
 .vagrant-*
-.vscode
 Vagrantfile
 config.py
 dev
