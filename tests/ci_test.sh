@@ -15,4 +15,4 @@ fi
 pip3 install -U pip setuptools
 pip3 install -r requirements.txt -r requirements-test.txt
 pip3 list
-pytest -sx -vvv --cov=. tests/
+pytest -sx -vvv --cov=. --cov-report=term-missing --cov-report=xml tests/

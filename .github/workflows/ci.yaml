@@ -39,6 +39,12 @@ jobs:
         run: |
           chmod +x ./tests/ci_test.sh
           ./tests/ci_test.sh
+      - name: Upload to codecov.io
+        uses: codecov/codecov-action@v2
+        with:
+          name: codecov-umbrella
+          verbose: true
+          flags: unittests
 
   Docker-Build-Test-Push:
     name: Docker-Build-Test-Push
