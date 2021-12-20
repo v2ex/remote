@@ -1,6 +1,6 @@
 # Remote Worker
 
-![](https://github.com/v2ex/remote/workflows/CI/badge.svg) ![](./coverage.svg)
+![](https://github.com/v2ex/remote/workflows/CI/badge.svg) [![codecov](https://codecov.io/gh/v2ex/remote/branch/main/graph/badge.svg?token=ATUW4F8M2K)](https://codecov.io/gh/v2ex/remote)
 
 ## Separation of Responsibilities
 
