@@ -115,7 +115,7 @@ def fit(box: int):
     image = handler.image
 
     start = time.time()
-    if handler.animated and request.args.get("animated"):
+    if handler.is_animated and request.args.get("animated"):
         if handler.mime == ImageMIME.GIF:
             frames, durations = _rescale_animated_image_frames(
                 image, box, resizeimage.resize_thumbnail
@@ -152,16 +152,22 @@ def fit(box: int):
 
         if frames:
             data = _save_animated_frames_data(
-                frames, durations, format=handler.mime.pil_format, **info
+                frames, durations, handler.mime.pil_format, **info
             )
         else:
             # Fallback to first frame of animated image
             data = _rescale_single_frame_image(
-                image, box, handler.mime.pil_format, resizeimage.resize_thumbnail
+                image,
+                box,
+                image.format,
+                resizeimage.resize_thumbnail,
             )
     else:
         data = _rescale_single_frame_image(
-            image, box, handler.mime.pil_format, resizeimage.resize_thumbnail
+            image,
+            box,
+            image.format,
+            resizeimage.resize_thumbnail,
         )
     if data is None:
         return error(APIError(message="Error occurred during rescaling"), status=500)
@@ -213,14 +219,14 @@ def resize_avatar():
     try:
         # Confirmation basic avatar to resize.
         # Try to use max size avatar otherwise use original(rotated).
-        if not handler.animated:
+        if not handler.is_animated:
             handler.auto_rotate()
 
         image = handler.image
         for size in AvatarSize:
             if size.is_mandatory or _need_rescale(image, size):
                 # Choose rescale function based on format and animation.
-                if handler.animated and request.args.get("animated"):
+                if handler.is_animated and request.args.get("animated"):
                     if handler.mime == ImageMIME.GIF or handler.mime == ImageMIME.WEBP:
                         frames, durations = _rescale_animated_image_frames(
                             image, size, resizeimage.resize_cover, validate=False
@@ -236,7 +242,7 @@ def resize_avatar():
                         data = _save_animated_frames_data(
                             frames,
                             durations,
-                            format=ImageMIME.PNG.pil_format,
+                            ImageMIME.PNG.pil_format,
                             loop=0,  # always loop for avatar
                         )
                     else:
@@ -250,7 +256,11 @@ def resize_avatar():
                         )
                 else:
                     data = _rescale_single_frame_image(
-                        image, size, resizeimage.resize_cover, validate=False
+                        image,
+                        size,
+                        ImageMIME.PNG.pil_format,
+                        resizeimage.resize_cover,
+                        validate=False,
                     )
                 avatars[f"avatar{size}"] = {
                     "size": len(data),
@@ -299,7 +309,7 @@ def _rescale_single_frame_image(
 
     except Exception as e:  # noqa
         capture_exception(e)
-        return None
+        return
 
 
 def _rescale_animated_png_frames(
@@ -351,4 +361,4 @@ def _save_animated_frames_data(
             return io_obj.getvalue()
     except Exception as e:  # noqa
         capture_exception(e)
-        return None
+        return

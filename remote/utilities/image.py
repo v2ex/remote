@@ -122,12 +122,15 @@ class ImageHandle:
         self._raw_content: bytes = content
         self.mime: Optional[ImageMIME] = None
         self.image: Image.Image = None
-        self.animated: bool = False
         self.preprocess()
 
     @property
     def is_valid(self) -> bool:
         return self.mime is not None and self.image is not None
+
+    @property
+    def is_animated(self) -> bool:
+        return getattr(self.image, "is_animated", False)
 
     @property
     def raw_size(self) -> int:
@@ -149,7 +152,7 @@ class ImageHandle:
         """Convert rare image formats into formats supported by PIL."""
         self.mime = self.guess_mime_from_bytes(self._raw_content)
         if not self.mime:
-            current_app.logger.info("No MIME type found, skip ths preparation process.")
+            current_app.logger.info("No MIME type found, skip the preparation process.")
             return
 
         # PIL only support rasterized image formats, convert SVG to PNG first.
@@ -194,9 +197,6 @@ class ImageHandle:
         else:
             self.image = image
             self.image.format = self.mime.pil_format
-
-        if getattr(self.image, "is_animated", False):
-            self.animated = True
 
     @staticmethod
     def guess_mime_from_bytes(buffer: bytes) -> ImageMIME | None:
