@@ -2,6 +2,7 @@ import base64
 import io
 import time
 from dataclasses import dataclass
+from typing import Iterable, List, Tuple
 
 import pillow_avif  # noqa: F401
 from flask import Blueprint, request
@@ -44,7 +45,7 @@ def images_info():
         ImageInfo(
             width=img.size[0],
             height=img.size[1],
-            mime_type=handler.guess_mime.mime,
+            mime_type=handler.mime.mime,
             binary_size=handler.raw_size,
             frames=handler.frames,
         )
@@ -68,7 +69,7 @@ def prepare_jpeg():
     if not handler.is_valid:
         return error(APIError(message="Unable to determine the file type"))
 
-    if handler.guess_mime != ImageMIME.JPEG:
+    if handler.mime != ImageMIME.JPEG:
         err = APIError(message="This endpoint is only for processing JPEG images")
         return error(err)
 
@@ -78,7 +79,7 @@ def prepare_jpeg():
     # 1. Remove GPS
     # 2. Auto Rotate
     try:
-        handler.auto_rotated().remove_exif(ExifTag.GPS_INFO)
+        handler.auto_rotate().remove_exif(ExifTag.GPS_INFO)
     except Exception as e:  # noqa
         capture_exception(e)
         return error(APIError(message=f"Failed to prepare image: {e}"), status=500)
@@ -86,7 +87,7 @@ def prepare_jpeg():
         {
             "uploaded": {
                 "size": handler.raw_size,
-                "mime": handler.guess_mime.mime,
+                "mime": handler.mime.mime,
             },
             "status": "ok",
             "output": handler.b64_content,
@@ -111,23 +112,76 @@ def fit(box: int):
 
     # Now we have a valid image.
     # Fit it into a box of the specified size.
-    _image: Image = handler.image
+    image = handler.image
 
     start = time.time()
-    _resized_content = _rescale_aspect_ratio(_image, box)
-    if _resized_content is None:
+    if handler.is_animated and request.args.get("animated"):
+        if handler.mime == ImageMIME.GIF:
+            frames, durations = _rescale_animated_image_frames(
+                image, box, resizeimage.resize_thumbnail
+            )
+            info = {
+                key: image.info[key]
+                for key in ["loop", "transparency"]
+                if key in image.info
+            } | {
+                "optimize": True,
+            }
+        elif handler.mime == ImageMIME.WEBP:
+            frames, durations = _rescale_animated_image_frames(
+                image, box, resizeimage.resize_thumbnail
+            )
+            info = {
+                key: image.info[key]
+                for key in ["loop", "icc_profile"]
+                if key in image.info
+            } | {
+                "lossless": False,
+                "optimize": True,
+            }
+        elif handler.mime == ImageMIME.PNG:
+            frames, durations = _rescale_animated_png_frames(
+                image, box, resizeimage.resize_thumbnail
+            )
+            info = {key: image.info[key] for key in ["loop"] if key in image.info} | {
+                "optimize": True,
+                "default_image": False,
+            }
+        else:
+            frames = None
+
+        if frames:
+            data = _save_animated_frames_data(
+                frames, durations, handler.mime.pil_format, **info
+            )
+        else:
+            # Fallback to first frame of animated image
+            data = _rescale_single_frame_image(
+                image,
+                box,
+                image.format,
+                resizeimage.resize_thumbnail,
+            )
+    else:
+        data = _rescale_single_frame_image(
+            image,
+            box,
+            image.format,
+            resizeimage.resize_thumbnail,
+        )
+    if data is None:
         return error(APIError(message="Error occurred during rescaling"), status=500)
-    resized_content = base64.b64encode(_resized_content).decode("utf-8")
+    resized_content = base64.b64encode(data).decode("utf-8")
     end = time.time()
 
     if request.args.get("simple"):
-        return success(resized_content, mimetype=handler.guess_mime.mime)
+        return success(resized_content, mimetype=handler.mime.mime)
 
     return success(
         {
             "uploaded": {
                 "size": handler.raw_size,
-                "mime": handler.guess_mime.mime,
+                "mime": handler.mime.mime,
             },
             "status": "ok",
             "success": True,
@@ -148,7 +202,6 @@ def fit(box: int):
     )
 )
 def resize_avatar():
-    # TODO resize image that with frames(gif/webp/..)
     # Check uploaded file is valid or not.
     received = get_file_bytes()
     if isinstance(received, APIError):
@@ -162,18 +215,57 @@ def resize_avatar():
     # Resize it to each size contained in `AvatarSize`.
 
     start = time.time()
+    avatars = {}
     try:
         # Confirmation basic avatar to resize.
         # Try to use max size avatar otherwise use original(rotated).
-        base_avatar = handler.auto_rotated().image
-        if _standard_avatar := _try_rescale(base_avatar, max(AvatarSize)):
-            base_avatar = ImageHandle.load_from_bytes(_standard_avatar)
+        if not handler.is_animated:
+            handler.auto_rotate()
 
-        avatars = {
-            f"avatar{size}": avatar_summary
-            for size in AvatarSize
-            if (avatar_summary := _get_avatar_summary(base_avatar, size))
-        }
+        image = handler.image
+        for size in AvatarSize:
+            if size.is_mandatory or _need_rescale(image, size):
+                # Choose rescale function based on format and animation.
+                if handler.is_animated and request.args.get("animated"):
+                    if handler.mime == ImageMIME.GIF or handler.mime == ImageMIME.WEBP:
+                        frames, durations = _rescale_animated_image_frames(
+                            image, size, resizeimage.resize_cover, validate=False
+                        )
+                    elif handler.mime == ImageMIME.PNG:
+                        frames, durations = _rescale_animated_png_frames(
+                            image, size, resizeimage.resize_cover, validate=False
+                        )
+                    else:
+                        frames = None
+
+                    if frames:
+                        data = _save_animated_frames_data(
+                            frames,
+                            durations,
+                            ImageMIME.PNG.pil_format,
+                            loop=0,  # always loop for avatar
+                        )
+                    else:
+                        # Fallback to first frame of animated image
+                        data = _rescale_single_frame_image(
+                            image,
+                            size,
+                            ImageMIME.PNG.pil_format,
+                            resizeimage.resize_cover,
+                            validate=False,
+                        )
+                else:
+                    data = _rescale_single_frame_image(
+                        image,
+                        size,
+                        ImageMIME.PNG.pil_format,
+                        resizeimage.resize_cover,
+                        validate=False,
+                    )
+                avatars[f"avatar{size}"] = {
+                    "size": len(data),
+                    "body": base64.b64encode(data).decode("utf-8"),
+                }
     except Exception as e:  # noqa
         capture_exception(e)
         return error(APIError(message=f"Failed to resize the uploaded image file: {e}"))
@@ -183,7 +275,7 @@ def resize_avatar():
         {
             "uploaded": {
                 "size": handler.raw_size,
-                "mime": handler.guess_mime.mime,
+                "mime": handler.mime.mime,
             },
             "status": "ok",
             "success": True,
@@ -201,33 +293,71 @@ def get_file_bytes() -> APIError | bytes:
     return _uploaded.read()
 
 
-def _get_avatar_summary(base_avatar: Image, size: AvatarSize):
-    if avatar_data := _try_rescale(base_avatar, size, force=size.is_mandatory):
-        return {
-            "size": len(avatar_data),
-            "body": base64.b64encode(avatar_data).decode("utf-8"),
-        }
+def _need_rescale(img: Image.Image, target_size: int) -> bool:
+    """Rescale an image if each of its both dimensions is larger than target size."""
+    return img.size[0] >= target_size and img.size[1] >= target_size
 
 
-def _try_rescale(img: Image, size: AvatarSize, force: bool = False) -> bytes | None:
-    _size = size.value
-    if not force and not all(i >= _size for i in img.size):
-        return
+def _rescale_single_frame_image(
+    image: Image.Image, size: int, format: str, resize, **resize_kwargs
+) -> bytes | None:
     try:
         with io.BytesIO() as io_obj:
-            thumbnail = resizeimage.resize_cover(img, [_size, _size], validate=False)
-            thumbnail.save(io_obj, format="PNG")
+            rescaled = resize(image, (size, size), **resize_kwargs)
+            rescaled.save(io_obj, format=format)
             return io_obj.getvalue()
+
     except Exception as e:  # noqa
         capture_exception(e)
-        return None
+        return
 
 
-def _rescale_aspect_ratio(image: Image, box: int) -> bytes | None:
+def _rescale_animated_png_frames(
+    image: Image.Image, size: int, resize, **resize_kwargs
+) -> Tuple[List[Image.Image], List[float]]:
+    frames = []
+    durations = []
+    # TODO: process default_image when resizing
+    # https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#apng-sequences
+    frame_start = 0
+    if image.info.get("default_image", False):
+        frame_start = 1
+
+    for i in range(frame_start, image.n_frames):
+        image.seek(i)
+        frames.append(resize(image, (size, size), **resize_kwargs))
+        durations.append(image.info.get("duration", 0))
+
+    return frames, durations
+
+
+def _rescale_animated_image_frames(
+    image: Image.Image, size: int, resize, **resize_kwargs
+) -> Tuple[List[Image.Image], List[float]]:
+    # GIF _should_ no longer need special handling on partial/additive frames
+    # See https://gist.github.com/BigglesZX/4016539 for old reference
+    frames = []
+    durations = []
+    for i in range(image.n_frames):
+        image.seek(i)
+        frames.append(resize(image, (size, size), **resize_kwargs))
+        durations.append(image.info.get("duration", 0))
+    return frames, durations
+
+
+def _save_animated_frames_data(
+    frames: Iterable[Image.Image], durations: Iterable[float], format: str, **info
+) -> bytes | None:
     try:
         with io.BytesIO() as io_obj:
-            thumbnail = resizeimage.resize_thumbnail(image, [box, box])
-            thumbnail.save(io_obj, format=image.format)
+            frames[0].save(
+                io_obj,
+                format=format,
+                save_all=True,
+                append_images=frames[1:],
+                duration=durations,
+                **info,
+            )
             return io_obj.getvalue()
     except Exception as e:  # noqa
         capture_exception(e)
