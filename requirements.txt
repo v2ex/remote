@@ -1,7 +1,10 @@
+bleach
+bs4
 cairosvg
 dnspython
 flask
 gunicorn
+marko
 pillow
 pillow-avif-plugin
 pillow_heif
