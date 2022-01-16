@@ -223,6 +223,144 @@ class TestImage(TestBase, TestFixture):
         output_img = Image.open(io.BytesIO(base64.b64decode(resp["output"])))
         self.assertEqual(output_img.size, _target_size)
 
+    def test_fit_animated_gif(self):
+        target_size = 400
+        original_size = Image.open(self.animated_gif).size
+        lw_aspect = original_size[0] / original_size[1]
+        if lw_aspect > 1:
+            _target_size = (target_size, int(target_size / lw_aspect))
+        else:
+            _target_size = (int(target_size * lw_aspect), target_size)
+
+        with open(self.animated_gif, "rb") as image_file:
+            data = {"file": (image_file, "animated.gif")}
+            response = self.client.post(
+                f"/images/fit/{target_size}?animated=1", data=data
+            )
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        self.assertIn("output", resp)
+        output_img = Image.open(io.BytesIO(base64.b64decode(resp["output"])))
+        self.assertTrue(getattr(output_img, "is_animated", False))
+        self.assertEqual(output_img.format, "GIF")
+        self.assertEqual(output_img.size, _target_size)
+
+    def test_fit_animated_test_webp(self):
+        target_size = 400
+        original_size = Image.open(self.test_webp).size
+        lw_aspect = original_size[0] / original_size[1]
+        if lw_aspect > 1:
+            _target_size = (target_size, int(target_size / lw_aspect))
+        else:
+            _target_size = (int(target_size * lw_aspect), target_size)
+
+        with open(self.test_webp, "rb") as image_file:
+            data = {"file": (image_file, "test.webp")}
+            response = self.client.post(
+                f"/images/fit/{target_size}?animated=1", data=data
+            )
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        self.assertIn("output", resp)
+        output_img = Image.open(io.BytesIO(base64.b64decode(resp["output"])))
+        self.assertTrue(getattr(output_img, "is_animated", False))
+        self.assertEqual(output_img.format, "WEBP")
+        self.assertEqual(output_img.size, _target_size)
+
+    def test_fit_animated_png(self):
+        target_size = 20
+        original_size = Image.open(self.animated_png).size
+        lw_aspect = original_size[0] / original_size[1]
+        if lw_aspect > 1:
+            _target_size = (target_size, int(target_size / lw_aspect))
+        else:
+            _target_size = (int(target_size * lw_aspect), target_size)
+
+        with open(self.animated_png, "rb") as image_file:
+            data = {"file": (image_file, "animated_png.png")}
+            response = self.client.post(
+                f"/images/fit/{target_size}?animated=1", data=data
+            )
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        self.assertIn("output", resp)
+        output_img = Image.open(io.BytesIO(base64.b64decode(resp["output"])))
+        self.assertTrue(getattr(output_img, "is_animated", False))
+        self.assertEqual(output_img.format, "PNG")
+        self.assertEqual(output_img.size, _target_size)
+
+    def test_fit_animated_gif_to_static(self):
+        target_size = 400
+        original_size = Image.open(self.animated_gif).size
+        lw_aspect = original_size[0] / original_size[1]
+        if lw_aspect > 1:
+            _target_size = (target_size, int(target_size / lw_aspect))
+        else:
+            _target_size = (int(target_size * lw_aspect), target_size)
+
+        with open(self.animated_gif, "rb") as image_file:
+            data = {"file": (image_file, "animated.gif")}
+            response = self.client.post(f"/images/fit/{target_size}", data=data)
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        self.assertIn("output", resp)
+        output_img = Image.open(io.BytesIO(base64.b64decode(resp["output"])))
+        self.assertFalse(getattr(output_img, "is_animated", False))
+        self.assertEqual(output_img.format, "GIF")
+        self.assertEqual(output_img.size, _target_size)
+
+    def test_fit_animated_test_webp_to_static(self):
+        target_size = 400
+        original_size = Image.open(self.test_webp).size
+        lw_aspect = original_size[0] / original_size[1]
+        if lw_aspect > 1:
+            _target_size = (target_size, int(target_size / lw_aspect))
+        else:
+            _target_size = (int(target_size * lw_aspect), target_size)
+
+        with open(self.test_webp, "rb") as image_file:
+            data = {"file": (image_file, "test.webp")}
+            response = self.client.post(f"/images/fit/{target_size}", data=data)
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        self.assertIn("output", resp)
+        output_img = Image.open(io.BytesIO(base64.b64decode(resp["output"])))
+        self.assertFalse(getattr(output_img, "is_animated", False))
+        self.assertEqual(output_img.format, "WEBP")
+        self.assertEqual(output_img.size, _target_size)
+
+    def test_fit_animate_png_to_static(self):
+        target_size = 20
+        original_size = Image.open(self.animated_png).size
+        lw_aspect = original_size[0] / original_size[1]
+        if lw_aspect > 1:
+            _target_size = (target_size, int(target_size / lw_aspect))
+        else:
+            _target_size = (int(target_size * lw_aspect), target_size)
+
+        with open(self.animated_png, "rb") as image_file:
+            data = {"file": (image_file, "animated_png.png")}
+            response = self.client.post(f"/images/fit/{target_size}", data=data)
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        self.assertIn("output", resp)
+        output_img = Image.open(io.BytesIO(base64.b64decode(resp["output"])))
+        self.assertFalse(getattr(output_img, "is_animated", False))
+        self.assertEqual(output_img.format, "PNG")
+        self.assertEqual(output_img.size, _target_size)
+
     def test_fit_oversize(self):
         original_size = Image.open(self.hello_jpeg).size
         target_size = max(original_size) + 100
@@ -391,5 +529,189 @@ class TestImage(TestBase, TestFixture):
         self.assertEqual(im.size, (128, 128))
         self.assertEqual(im.format, "PNG")
 
+        self.assertNotIn("avatar256", resp)
+        self.assertNotIn("avatar512", resp)
+
+    def test_resize_avatar_animated_gif(self):
+        with open(self.animated_gif, "rb") as image_file:
+            data = {"file": (image_file, "animated.gif")}
+            response = self.client.post("/images/resize_avatar?animated=1", data=data)
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        self.assertIn("avatar24", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar24"]["body"])))
+        self.assertTrue(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (24, 24))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar48", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar48"]["body"])))
+        self.assertTrue(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (48, 48))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar73", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar73"]["body"])))
+        self.assertTrue(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (73, 73))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar128", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar128"]["body"])))
+        self.assertTrue(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (128, 128))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar256", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar256"]["body"])))
+        self.assertTrue(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (256, 256))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar512", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar512"]["body"])))
+        self.assertTrue(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (512, 512))
+        self.assertEqual(im.format, "PNG")
+
+    def test_resize_avatar_animated_test_webp(self):
+        with open(self.test_webp, "rb") as image_file:
+            data = {"file": (image_file, "test.webp")}
+            response = self.client.post("/images/resize_avatar?animated=1", data=data)
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        self.assertIn("avatar24", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar24"]["body"])))
+        self.assertTrue(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (24, 24))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar48", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar48"]["body"])))
+        self.assertTrue(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (48, 48))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar73", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar73"]["body"])))
+        self.assertTrue(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (73, 73))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar128", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar128"]["body"])))
+        self.assertTrue(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (128, 128))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar256", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar256"]["body"])))
+        self.assertTrue(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (256, 256))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertNotIn("avatar512", resp)
+
+    def test_resize_avatar_animated_png(self):
+        with open(self.animated_png, "rb") as image_file:
+            data = {"file": (image_file, "animated_png.png")}
+            response = self.client.post("/images/resize_avatar?animated=1", data=data)
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        self.assertIn("avatar24", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar24"]["body"])))
+        self.assertTrue(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (24, 24))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar48", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar48"]["body"])))
+        self.assertTrue(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (48, 48))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar73", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar73"]["body"])))
+        self.assertTrue(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (73, 73))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertNotIn("avatar128", resp)
+        self.assertNotIn("avatar256", resp)
+        self.assertNotIn("avatar512", resp)
+
+    def test_resize_avatar_animated_test_webp_to_static(self):
+        with open(self.test_webp, "rb") as image_file:
+            data = {"file": (image_file, "test.webp")}
+            response = self.client.post("/images/resize_avatar", data=data)
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        self.assertIn("avatar24", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar24"]["body"])))
+        self.assertFalse(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (24, 24))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar48", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar48"]["body"])))
+        self.assertFalse(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (48, 48))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar73", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar73"]["body"])))
+        self.assertFalse(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (73, 73))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar128", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar128"]["body"])))
+        self.assertFalse(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (128, 128))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar256", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar256"]["body"])))
+        self.assertFalse(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (256, 256))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertNotIn("avatar512", resp)
+
+    def test_resize_avatar_animated_png_to_static(self):
+        with open(self.animated_png, "rb") as image_file:
+            data = {"file": (image_file, "animated_png.png")}
+            response = self.client.post("/images/resize_avatar", data=data)
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        self.assertIn("avatar24", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar24"]["body"])))
+        self.assertFalse(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (24, 24))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar48", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar48"]["body"])))
+        self.assertFalse(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (48, 48))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertIn("avatar73", resp)
+        im = Image.open(io.BytesIO(base64.b64decode(resp["avatar73"]["body"])))
+        self.assertFalse(getattr(im, "is_animated", False))
+        self.assertEqual(im.size, (73, 73))
+        self.assertEqual(im.format, "PNG")
+
+        self.assertNotIn("avatar128", resp)
         self.assertNotIn("avatar256", resp)
         self.assertNotIn("avatar512", resp)
