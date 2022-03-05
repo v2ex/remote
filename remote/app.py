@@ -11,7 +11,7 @@ import sentry_sdk
 from flask import Flask
 from sentry_sdk.integrations.flask import FlaskIntegration
 
-from remote.blueprints import image_bp, index_bp, network_bp, text_bp
+from remote.blueprints import ens_bp, image_bp, index_bp, network_bp, text_bp
 from remote.config import base
 
 # We use this environment variable to identify the env in which the project should run.
@@ -105,12 +105,7 @@ def setup_logger(flask_app: Flask):
 
 def register_blueprint(flask_app: Flask):
     # TODO consider configuring each blueprint with its own `url_prefix`.
-    blueprints = [
-        index_bp,
-        image_bp,
-        text_bp,
-        network_bp,
-    ]
+    blueprints = [index_bp, image_bp, text_bp, network_bp, ens_bp]
     for bp in blueprints:
         flask_app.register_blueprint(bp)
 

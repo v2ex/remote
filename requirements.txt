@@ -13,3 +13,4 @@ python-magic
 python-resize-image
 requests
 sentry-sdk[flask]
+web3
