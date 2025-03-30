@@ -10,7 +10,7 @@ from remote.wrapper import APIError, error, success
 
 ens_bp = Blueprint("ens", __name__)
 
-w3 = Web3(HTTPProvider("https://cloudflare-eth.com"))
+w3 = Web3(HTTPProvider("https://eth.llamarpc.com"))
 w3.provider.request_counter = itertools.count(start=1)
 
 
