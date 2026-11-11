@@ -1,5 +1,7 @@
 import base64
 import io
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest.mock import patch
 
 from PIL import Image
@@ -94,8 +96,14 @@ class TestImage(TestBase, TestFixture):
 
         self.assertIn("No file", resp["message"])
 
+    def test_images_info_rejects_non_image(self):
+        data = {"file": (io.BytesIO(b"hello world"), "hello.txt")}
+        response = self.client.post("/images/info", data=data)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Unable to determine", response.json["message"])
+
     def test_images_info_error_2(self):
-        svg2png_func = "remote.utilities.image.cairosvg.svg2png"
+        svg2png_func = "remote.utilities.image.ImageHandle.rasterize_svg"
 
         with patch(svg2png_func, side_effect=Exception("Mock Exception")):
             with open(self.python_svg, "rb") as image_file:
@@ -222,6 +230,64 @@ class TestImage(TestBase, TestFixture):
         self.assertIn("output", resp)
         output_img = Image.open(io.BytesIO(base64.b64decode(resp["output"])))
         self.assertEqual(output_img.size, _target_size)
+
+    def test_fit_svg(self):
+        with open(self.python_svg, "rb") as image_file:
+            data = {"file": (image_file, "python.svg")}
+            response = self.client.post("/images/fit/48", data=data)
+        self.assertEqual(response.status_code, 200)
+
+        output = base64.b64decode(response.json["output"])
+        output_img = Image.open(io.BytesIO(output))
+        self.assertEqual(output_img.format, "PNG")
+        self.assertEqual(output_img.size, (48, 48))
+
+    def test_svg_cannot_reach_external_resources(self):
+        requested = []
+
+        class Recorder(BaseHTTPRequestHandler):
+            def do_GET(self):
+                requested.append(self.path)
+                self.send_response(404)
+                self.end_headers()
+
+            def log_message(self, *args):
+                ...
+
+        server = HTTPServer(("127.0.0.1", 0), Recorder)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        base = f"http://127.0.0.1:{server.server_port}"
+        svg = f"""<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet href="{base}/style.css"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"
+     xmlns:xlink="http://www.w3.org/1999/xlink">
+  <style>@import url("{base}/import.css");</style>
+  <image href="{base}/image.png" width="64" height="64"/>
+  <use xlink:href="{base}/use.svg#shape"/>
+  <rect width="64" height="64" fill="url({base}/paint.svg#gradient)"/>
+</svg>""".encode()
+
+        data = {"file": (io.BytesIO(svg), "external.svg")}
+        response = self.client.post("/images/info", data=data)
+
+        self.assertEqual(requested, [])
+        self.assertEqual(response.status_code, 200)
+
+    def test_svg_cannot_choose_canvas_size(self):
+        svg = (
+            b'<svg xmlns="http://www.w3.org/2000/svg" width="60000" height="30000">'
+            b'<rect width="60000" height="30000" fill="red"/></svg>'
+        )
+
+        data = {"file": (io.BytesIO(svg), "huge.svg")}
+        response = self.client.post("/images/info", data=data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            (response.json["width"], response.json["height"]), (1024, 1024)
+        )
 
     def test_fit_animated_gif(self):
         target_size = 400

@@ -1,6 +1,6 @@
 bleach
 bs4
-cairosvg
+cairosvg>=2.9.1
 dnspython
 flask
 gunicorn

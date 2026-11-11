@@ -6,7 +6,7 @@ from typing import Optional
 import cairosvg
 import magic
 from flask import current_app
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 from sentry_sdk import capture_exception
 
@@ -117,6 +117,10 @@ class AvatarSize(IntEnum):
 
 
 class ImageHandle:
+    # Side of the square canvas SVG is rasterized to, in pixels.
+    # Twice the largest avatar, so that every avatar size is a downscale.
+    SVG_CANVAS_SIDE = 2 * max(AvatarSize)
+
     def __init__(self, content: bytes):
         """Image handle."""
         self._raw_content: bytes = content
@@ -159,7 +163,7 @@ class ImageHandle:
         raw_content = self._raw_content
         if self.mime == ImageMIME.SVG:
             try:
-                raw_content = cairosvg.svg2png(self._raw_content, dpi=300)
+                raw_content = self.rasterize_svg(self._raw_content)
             except Exception as e:  # noqa
                 capture_exception(e)
 
@@ -181,19 +185,6 @@ class ImageHandle:
             max_size = max(AvatarSize)
             self.image = image.resize((max_size, max_size), Image.NEAREST)
             self.image.format = ImageMIME.PNG.pil_format
-        elif self.mime == ImageMIME.SVG:
-            # Letterbox rasterized SVG in a square.
-            w, h = image.size
-            background = Image.new("RGBA", (max(w, h), max(w, h)), (0, 0, 0, 0))
-            is_horizontal = w > h
-            letterbox_length = int(abs(w - h) / 2)
-            image_top_left = (
-                (0, letterbox_length) if is_horizontal else (letterbox_length, 0)
-            )
-            background.paste(image, image_top_left)
-
-            self.image = background
-            self.image.format = self.mime.pil_format
         else:
             self.image = image
             self.image.format = self.mime.pil_format
@@ -205,24 +196,48 @@ class ImageHandle:
         try:
             magic_format = magic.from_buffer(buffer, mime=True)
             # magic_format eg: "image/jpeg"
-        except magic.MagicException as e:
-            current_app.logger.warning("Magic unable to guess mime type: %s", e.message)
+        except magic.MagicException:
+            current_app.logger.warning("Magic unable to guess mime type", exc_info=True)
 
-        if mime := ImageMIME.get_by_magic_format(magic_format.lower()):
+        if magic_format and (
+            mime := ImageMIME.get_by_magic_format(magic_format.lower())
+        ):
             return mime
 
         try:
-            _image = Image.open(io.BytesIO(buffer))
-            pil_format = _image.format
+            with Image.open(io.BytesIO(buffer)) as _image:
+                pil_format = _image.format
             # pil_format eg: "AVIF"
-        except (UnidentifiedImageError, AttributeError) as e:
-            current_app.logger.warning("Magic unable to guess mime type: %s", e.message)
+        except Exception:  # noqa
+            # Whatever PIL cannot open is not an image we can work with.
+            # It gets logged below, together with what magic made of it.
+            ...
 
-        if mime := ImageMIME.get_by_pil_format(pil_format.upper()):
+        if pil_format and (mime := ImageMIME.get_by_pil_format(pil_format.upper())):
             return mime
 
         current_app.logger.warning(
             "Unsupported mime type, magic: %s, PIL :%s", magic_format, pil_format
+        )
+
+    @staticmethod
+    def rasterize_svg(svg: bytes) -> bytes:
+        """
+        Convert untrusted SVG to a square PNG with the drawing centered in it.
+
+        - `unsafe=False` keeps the document from reaching anything but itself: no XML
+          entities, and no fetching of external URLs or local files (CairoSVG 2.7.0+,
+          see `requirements.txt`).
+        - The canvas size is ours. An SVG declares its own size, so rendering it at
+          that size would let a few bytes like `width="30000" height="30000"` make us
+          allocate gigabytes. Being vector, it loses nothing by being scaled instead.
+        """
+        return cairosvg.svg2png(
+            svg,
+            dpi=300,
+            unsafe=False,
+            output_width=ImageHandle.SVG_CANVAS_SIDE,
+            output_height=ImageHandle.SVG_CANVAS_SIDE,
         )
 
     @staticmethod
