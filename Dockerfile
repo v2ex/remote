@@ -7,8 +7,9 @@ LABEL org.opencontainers.image.authors="livid@v2ex.com"
 # - ttf-dejavu: a font for the text in SVG
 RUN apk add --no-cache cairo libmagic ttf-dejavu
 
-COPY ./requirements.txt /app/requirements.txt
-RUN pip3 install --no-cache-dir -r /app/requirements.txt
+# Exact versions, checked by hash. `make lock` refreshes them.
+COPY ./requirements.lock /app/requirements.lock
+RUN pip3 install --no-cache-dir --require-hashes -r /app/requirements.lock
 
 COPY . /app
 

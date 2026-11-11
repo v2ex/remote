@@ -30,6 +30,10 @@ When developing on macOS, you can install those packages with Homebrew:
 brew install exiftool jhead libmagic libheif cairo
 ```
 
+## Dependencies
+
+`requirements.txt` lists what the project needs. `requirements.lock` holds the exact versions, with hashes, that the Docker image installs. See the `lock` target in the [Makefile](./Makefile) for how to refresh it.
+
 ## Endpoints
 
 ### images/prepare_jpeg
