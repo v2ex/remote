@@ -35,3 +35,9 @@ coverage.svg
 setup.py
 setup.cfg
 requirements-test.txt
+
+# Local config (e.g. remote/config/dev.py) holds this machine's settings.
+remote/config/*
+!remote/config/__init__.py
+!remote/config/base.py
+!remote/config/test.py
