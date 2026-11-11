@@ -99,11 +99,13 @@ jobs:
       - name: Test In Container
         run: |
           echo "Start running the test script inside the container..."
-          docker run --rm \
+          # The image runs as an unprivileged user and has no bash,
+          # installing the test requirements needs root.
+          docker run --rm --user root \
           --mount type=bind,source=${GITHUB_WORKSPACE}/tests,target=/app/tests \
           --mount type=bind,source=${GITHUB_WORKSPACE}/requirements-test.txt,target=/app/requirements-test.txt \
           ${{ env.TEST_TAG }} \
-          bash -c "chmod +x /app/tests/ci_test.sh && /app/tests/ci_test.sh"
+          sh /app/tests/ci_test.sh
           echo "End running the test script inside the container with : $?"
 
       - name: Push Image
