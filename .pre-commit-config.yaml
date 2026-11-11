@@ -24,13 +24,13 @@ repos:
           )
 
   - repo: https://github.com/PyCQA/isort
-    rev: 5.10.1
+    rev: 5.12.0
     hooks:
       - id: isort
         args: ["--profile", "black", "-p", "config"]
 
   - repo: https://github.com/psf/black
-    rev: 21.12b0
+    rev: 22.12.0
     hooks:
       - id: black
         args: ["--line-length", "88", "--target-version", "py310"]
@@ -55,9 +55,11 @@ repos:
           - flake8-print
           - flake8-pytest-style
           - flake8-tidy-imports
+          # flake8-logging-format imports pkg_resources, which setuptools 81+ lacks.
+          - setuptools<81
 
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.7.1
+    rev: 1.7.10
     hooks:
       - id: bandit
         args: ["-l", "-v", "-c", ".bandit.yaml"]
