@@ -510,6 +510,27 @@ class TestImage(TestBase, TestFixture):
             self.assertEqual(output_img.size, (size, size))
             self.assertEqual(output_img.format, "PNG")
 
+    def test_resize_avatar_cmyk_jpeg(self):
+        cmyk_jpeg = io.BytesIO()
+        Image.new("CMYK", (600, 600), (0, 255, 255, 0)).save(cmyk_jpeg, format="JPEG")
+        cmyk_jpeg.seek(0)
+
+        data = {"file": (cmyk_jpeg, "cmyk.jpg")}
+        response = self.client.post("/images/resize_avatar", data=data)
+        self.assertEqual(response.status_code, 200)
+
+        resp = response.json
+
+        for size in AvatarSize:
+            _body = resp[f"avatar{size}"]["body"]
+            output_img = Image.open(io.BytesIO(base64.b64decode(_body)))
+            self.assertEqual(output_img.size, (size, size))
+            self.assertEqual(output_img.format, "PNG")
+        # Pure magenta and yellow ink is red.
+        red, green, blue = output_img.convert("RGB").getpixel((256, 256))
+        self.assertGreater(red, 200)
+        self.assertLess(max(green, blue), 60)
+
     def test_resize_avatar_avif(self):
         with open(self.cap_avif, "rb") as image_file:
             data = {"file": (image_file, "cap.avif")}

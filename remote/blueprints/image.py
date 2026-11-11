@@ -16,6 +16,9 @@ from remote.wrapper import APIDoc, APIError, Methods, api_doc, error, success
 # Please keep the blueprint definition at the top uniformly.
 image_bp = Blueprint("image", __name__)
 
+# The image modes PNG can store.
+PNG_MODES = {"1", "L", "LA", "I", "I;16", "P", "RGB", "RGBA"}
+
 
 @dataclass
 class ImageInfo:
@@ -304,6 +307,9 @@ def _rescale_single_frame_image(
     try:
         with io.BytesIO() as io_obj:
             rescaled = resize(image, (size, size), **resize_kwargs)
+            if format == ImageMIME.PNG.pil_format and rescaled.mode not in PNG_MODES:
+                # e.g. a CMYK JPEG, which PNG has no way to store.
+                rescaled = rescaled.convert("RGB")
             rescaled.save(io_obj, format=format)
             return io_obj.getvalue()
 
