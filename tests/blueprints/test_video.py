@@ -51,3 +51,28 @@ class TestVideo(TestBase, TestFixture):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json["ext"], "mov")
+
+    def test_prepare_refuses_a_codec_off_the_list(self):
+        # Motion-JPEG keeps each frame's EXIF, GPS included, through a remux.
+        with open(self.mjpeg_mov, "rb") as video:
+            response = self.client.post(
+                "/videos/prepare", data={"file": (video, "clip.mov")}
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_prepare_drops_sei_messages(self):
+        with open(self.sei_mp4, "rb") as video:
+            body = video.read()
+        self.assertIn(b"SEISECRET", body)
+        response = self.client.post(
+            "/videos/prepare", data={"file": (io.BytesIO(body), "clip.mp4")}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"SEISECRET", response.get_data())
+
+    def test_prepare_refuses_a_copy_much_bigger_than_the_upload(self):
+        with open(self.amplified_mov, "rb") as video:
+            response = self.client.post(
+                "/videos/prepare", data={"file": (video, "clip.mov")}
+            )
+        self.assertEqual(response.status_code, 400)

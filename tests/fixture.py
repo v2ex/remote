@@ -52,3 +52,18 @@ class TestFixture:
     def located_mov(self):
         # One second of 64x48 H.264 tagged with a location, the iPhone way too.
         return self.get_fixture_path("located.mov")
+
+    @property
+    def mjpeg_mov(self):
+        # One second of 64x48 Motion-JPEG, whose frames can each carry EXIF.
+        return self.get_fixture_path("mjpeg.mov")
+
+    @property
+    def sei_mp4(self):
+        # One second of 64x48 H.264 with "SEISECRET37.7749" in an SEI message.
+        return self.get_fixture_path("sei.mp4")
+
+    @property
+    def amplified_mov(self):
+        # 18 KB whose sample table lists one 9 KB H.264 frame 2,000 times.
+        return self.get_fixture_path("amplified.mov")

@@ -20,12 +20,28 @@ lock:
 build-image:
 	docker build -t remote:latest .
 
+# The worker never opens a connection of its own, so ffmpeg can't either: the
+# container sits on its own bridge, and the host drops anything that subnet
+# starts, to the internet, the tailnet or the host itself. Answers to requests
+# on the published port still go out. Needs root; iptables rules don't survive
+# a reboot, so run it again after one (`run` does too).
+NETWORK ?= remote-sandbox
+SUBNET ?= 172.31.250.0/24
+sandbox:
+	docker network inspect $(NETWORK) >/dev/null 2>&1 \
+		|| docker network create --subnet $(SUBNET) $(NETWORK)
+	for chain in DOCKER-USER INPUT; do \
+		iptables -C $$chain -s $(SUBNET) -m conntrack ! --ctstate ESTABLISHED,RELATED -j DROP 2>/dev/null \
+		|| iptables -I $$chain -s $(SUBNET) -m conntrack ! --ctstate ESTABLISHED,RELATED -j DROP; \
+	done
+
 # The worker parses untrusted files, so the container gets as little as possible:
-# no root, no capabilities, read-only filesystem, bounded memory and processes.
-# /tmp holds a video and its stripped copy per request (95MB each), and its
-# pages count against the memory limit.
-run:
+# no root, no capabilities, no network of its own (see `sandbox`), read-only
+# filesystem, bounded memory and processes. /tmp holds a video and its stripped
+# copy per request (95MB each), and its pages count against the memory limit.
+run: sandbox
 	docker run --name=remote --restart=always -p 127.0.0.1:5000:5000 -d \
+		--network $(NETWORK) \
 		--env-file $(ENV_FILE) -v $(DATA_DIR):/opt/data:ro \
 		--read-only --tmpfs /tmp:rw,noexec,nosuid,size=2g \
 		--cap-drop=ALL --security-opt=no-new-privileges \
