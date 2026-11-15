@@ -21,13 +21,13 @@ We included a [pre-commit](https://pre-commit.com/) [config](./.pre-commit-confi
 These packages are required for manipulating images:
 
 ```
-sudo apt install libimage-exiftool-perl jhead libmagic-dev
+sudo apt install libimage-exiftool-perl jhead libmagic-dev ffmpeg
 ```
 
 When developing on macOS, you can install those packages with Homebrew:
 
 ```
-brew install exiftool jhead libmagic libheif cairo
+brew install exiftool jhead libmagic libheif cairo ffmpeg
 ```
 
 ## Dependencies
@@ -90,3 +90,15 @@ The output format is always in PNG.
 curl example for sending such a request:
 
     curl -X POST -F "file=@/path/to/image.jpg" http://localhost:5000/images/resize_avatar
+
+### videos/poster
+
+Accepts a multipart/form-data request with the following parameters:
+
+    - file: the video, up to 100 MB
+
+MP4, MOV and WebM are taken. Returns the video's type and extension, duration, video and audio codecs, and a JPEG poster frame (`poster`, Base64) with its width and height. The poster is the first frame from a few points early in the video that is not black; a video that is dark throughout gets its brightest one.
+
+ffmpeg only reads the uploaded file itself through the MP4/MOV and Matroska/WebM demuxers, so a playlist passed off as a video cannot make it open other files or URLs.
+
+    curl -X POST -F "file=@/path/to/video.mp4" http://localhost:5000/videos/poster

@@ -3,9 +3,10 @@ FROM python:3.14-alpine
 LABEL org.opencontainers.image.authors="livid@v2ex.com"
 
 # - cairo: rasterizing SVG (cairocffi)
+# - ffmpeg: reading videos and their poster frames
 # - libmagic: MIME sniffing (python-magic)
 # - ttf-dejavu: a font for the text in SVG
-RUN apk add --no-cache cairo libmagic ttf-dejavu
+RUN apk add --no-cache cairo ffmpeg libmagic ttf-dejavu
 
 # Exact versions, checked by hash. `make lock` refreshes them.
 COPY ./requirements.lock /app/requirements.lock

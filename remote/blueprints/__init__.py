@@ -3,5 +3,6 @@ from .image import image_bp
 from .index import index_bp
 from .network import network_bp
 from .text import text_bp
+from .video import video_bp
 
-__all__ = ["index_bp", "image_bp", "network_bp", "text_bp", "ens_bp"]
+__all__ = ["index_bp", "image_bp", "network_bp", "text_bp", "ens_bp", "video_bp"]

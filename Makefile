@@ -25,7 +25,7 @@ build-image:
 run:
 	docker run --name=remote --restart=always -p 127.0.0.1:5000:5000 -d \
 		--env-file $(ENV_FILE) -v $(DATA_DIR):/opt/data:ro \
-		--read-only --tmpfs /tmp \
+		--read-only --tmpfs /tmp:rw,noexec,nosuid,size=1g \
 		--cap-drop=ALL --security-opt=no-new-privileges \
 		--memory=4g --memory-swap=4g --pids-limit=256 \
 		remote:latest
