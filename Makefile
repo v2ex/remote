@@ -22,10 +22,12 @@ build-image:
 
 # The worker parses untrusted files, so the container gets as little as possible:
 # no root, no capabilities, read-only filesystem, bounded memory and processes.
+# /tmp holds a video and its stripped copy per request (95MB each), and its
+# pages count against the memory limit.
 run:
 	docker run --name=remote --restart=always -p 127.0.0.1:5000:5000 -d \
 		--env-file $(ENV_FILE) -v $(DATA_DIR):/opt/data:ro \
-		--read-only --tmpfs /tmp:rw,noexec,nosuid,size=1g \
+		--read-only --tmpfs /tmp:rw,noexec,nosuid,size=2g \
 		--cap-drop=ALL --security-opt=no-new-privileges \
 		--memory=4g --memory-swap=4g --pids-limit=256 \
 		remote:latest
