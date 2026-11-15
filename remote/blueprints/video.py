@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 
 import magic
-from flask import Blueprint, request
+from flask import Blueprint, request, send_file
 from PIL import Image, ImageStat
 from sentry_sdk import capture_exception
 
@@ -32,6 +32,10 @@ FFMPEG = "ffmpeg"
 # Seconds. All runs together stay under gunicorn's 30 second worker timeout.
 PROBE_TIMEOUT = 5
 GRAB_TIMEOUT = 4
+PREPARE_TIMEOUT = 20
+
+# The muxer each kind of video is written back with.
+MUXERS = {"mp4": "mp4", "mov": "mov", "webm": "webm"}
 
 # A frame darker or flatter than this (mean and spread of its luma, 0-255) counts
 # as black.
@@ -112,6 +116,72 @@ def poster():
             "poster_at": at,
         }
     )
+
+
+@video_bp.route("/videos/prepare", methods=Methods.common())
+@api_doc(
+    APIDoc(
+        usage="Upload a video (MP4, MOV or WebM) and get it back without its "
+        "metadata: no location, dates or data tracks, its video and audio as they are"
+    )
+)
+def prepare():
+    if not request.content_length or request.content_length > MAX_UPLOAD_BYTES:
+        return error(APIError(message="The video is too large"), status=413)
+    if not (uploaded := request.files.get("file")):
+        return error(APIError(message="No file was uploaded"))
+
+    with tempfile.NamedTemporaryFile() as video:
+        uploaded.save(video)
+        video.flush()
+        ext = VIDEO_TYPES.get(magic.from_file(video.name, mime=True))
+        if ext is None:
+            return error(APIError(message="Not an MP4, MOV or WebM video"))
+        # Closing it after the response is sent deletes it.
+        out = tempfile.NamedTemporaryFile(suffix="." + ext)
+        try:
+            subprocess.run(
+                [
+                    FFMPEG,
+                    "-nostdin",
+                    "-y",
+                    "-v",
+                    "error",
+                    *INPUT_GUARD,
+                    "-i",
+                    "file:" + video.name,
+                    # Only the pictures and the sound: an iPhone's timed
+                    # metadata track goes too.
+                    "-map",
+                    "0:V",
+                    "-map",
+                    "0:a?",
+                    "-c",
+                    "copy",
+                    "-map_metadata",
+                    "-1",
+                    "-map_chapters",
+                    "-1",
+                    *(["-movflags", "+faststart"] if ext != "webm" else []),
+                    "-f",
+                    MUXERS[ext],
+                    "file:" + out.name,
+                ],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                timeout=PREPARE_TIMEOUT,
+                check=True,
+            )
+        except subprocess.TimeoutExpired as e:
+            out.close()
+            capture_exception(e)
+            return error(APIError(message="Preparing the video took too long"))
+        except subprocess.CalledProcessError:
+            out.close()
+            return error(APIError(message="Unable to read the video"))
+
+    mime_type = next(m for m, e in VIDEO_TYPES.items() if e == ext)
+    return send_file(out, mimetype=mime_type)
 
 
 def _probe(path: str) -> dict:

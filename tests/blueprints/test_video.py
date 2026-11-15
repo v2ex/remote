@@ -33,3 +33,21 @@ class TestVideo(TestBase, TestFixture):
         )
         self.assertEqual(response.status_code, 400)
         self.assertNotIn("poster", response.json)
+
+    def test_prepare_drops_the_location_and_keeps_a_readable_video(self):
+        with open(self.located_mov, "rb") as video:
+            body = video.read()
+        self.assertIn(b"37.7749", body)
+
+        response = self.client.post(
+            "/videos/prepare", data={"file": (io.BytesIO(body), "clip.mov")}
+        )
+        self.assertEqual(response.status_code, 200)
+        prepared = response.get_data()
+        self.assertNotIn(b"37.7749", prepared)
+
+        response = self.client.post(
+            "/videos/poster", data={"file": (io.BytesIO(prepared), "clip.mov")}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["ext"], "mov")

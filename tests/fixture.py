@@ -47,3 +47,8 @@ class TestFixture:
     def black_start_mp4(self):
         # Two seconds of 64x48 H.264: one black, then the lavfi test pattern.
         return self.get_fixture_path("black_start.mp4")
+
+    @property
+    def located_mov(self):
+        # One second of 64x48 H.264 tagged with a location, the iPhone way too.
+        return self.get_fixture_path("located.mov")

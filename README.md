@@ -99,6 +99,16 @@ Accepts a multipart/form-data request with the following parameters:
 
 MP4, MOV and WebM are taken. Returns the video's type and extension, duration, video and audio codecs, and a JPEG poster frame (`poster`, Base64) with its width and height. The poster is the first frame from a few points early in the video that is not black; a video that is dark throughout gets its brightest one.
 
-ffmpeg only reads the uploaded file itself through the MP4/MOV and Matroska/WebM demuxers, so a playlist passed off as a video cannot make it open other files or URLs.
+### videos/prepare
+
+Accepts a multipart/form-data request with the following parameters:
+
+    - file: the video, up to 100 MB
+
+Returns the video as the response body, rewritten without its metadata: no location, dates, chapters or data tracks such as an iPhone's timed metadata. The video and audio streams are copied as they are, rotation included, and an MP4 or MOV gets its index moved to the front so it starts playing sooner.
+
+    curl -X POST -F "file=@/path/to/video.mov" -o prepared.mov http://localhost:5000/videos/prepare
+
+Both video endpoints run ffmpeg only on the uploaded file itself, through the MP4/MOV and Matroska/WebM demuxers, so a playlist passed off as a video cannot make it open other files or URLs.
 
     curl -X POST -F "file=@/path/to/video.mp4" http://localhost:5000/videos/poster
